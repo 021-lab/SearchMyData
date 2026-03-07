@@ -1,0 +1,15 @@
+pyproject.toml
+src/__init__.py
+src/auth.py
+src/connector.py
+src/models.py
+src/search.py
+src/gmail_search.egg-info/PKG-INFO
+src/gmail_search.egg-info/SOURCES.txt
+src/gmail_search.egg-info/dependency_links.txt
+src/gmail_search.egg-info/requires.txt
+src/gmail_search.egg-info/top_level.txt
+tests/test_auth.py
+tests/test_connector.py
+tests/test_models.py
+tests/test_search.py
