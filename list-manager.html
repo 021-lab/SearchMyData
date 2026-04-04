@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Список</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f0f2f5;
+    min-height: 100vh;
+    overscroll-behavior: none;
+  }
+
+  header {
+    background: #fff;
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid #e0e0e0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+
+  header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1a1a2e;
+  }
+
+  .hint {
+    font-size: 11px;
+    color: #999;
+    margin-top: 6px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .hint span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .hint .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  #list-container {
+    padding: 12px 0;
+    position: relative;
+  }
+
+  .list-item-wrapper {
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 1px;
+  }
+
+  .action-bg {
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 20px;
+    min-width: 80px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: #ff3b30;
+    border-radius: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+
+  .action-bg .action-icon { font-size: 20px; }
+  .action-bg .action-label { margin-left: 6px; }
+
+  .action-bg.up   { background: #34c759; }
+  .action-bg.down { background: #007aff; }
+  .action-bg.del  { background: #ff3b30; }
+
+  .list-item {
+    background: #fff;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-bottom: 1px solid #f0f0f0;
+    position: relative;
+    will-change: transform;
+    transition: box-shadow 0.15s;
+    user-select: none;
+    touch-action: pan-y;
+  }
+
+  .list-item-wrapper:first-child .list-item { border-top: none; }
+
+  .list-item.dragging {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    z-index: 10;
+  }
+
+  .item-line1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1a1a2e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .item-line2 {
+    font-size: 13px;
+    color: #888;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .item-index {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    color: #ccc;
+    font-weight: 500;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: rgba(30,30,30,0.88);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 999;
+    backdrop-filter: blur(4px);
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #bbb;
+  }
+
+  .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-state p { font-size: 15px; }
+
+  .add-btn {
+    position: fixed;
+    bottom: 28px;
+    right: 20px;
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: #007aff;
+    color: #fff;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,122,255,0.4);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200;
+    transition: transform 0.1s, background 0.1s;
+  }
+  .add-btn:active { transform: scale(0.92); background: #005fcb; }
+
+  /* modal */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex; align-items: flex-end;
+    z-index: 500;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: #fff;
+    width: 100%;
+    border-radius: 20px 20px 0 0;
+    padding: 20px 20px 36px;
+    transform: translateY(100%);
+    transition: transform 0.25s cubic-bezier(.4,0,.2,1);
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal h2 { font-size: 17px; font-weight: 700; margin-bottom: 16px; color: #1a1a2e; }
+  .modal input {
+    width: 100%; border: 1.5px solid #e0e0e0; border-radius: 10px;
+    padding: 12px 14px; font-size: 15px; margin-bottom: 10px;
+    outline: none; color: #1a1a2e;
+    transition: border-color 0.15s;
+  }
+  .modal input:focus { border-color: #007aff; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 6px; }
+  .btn { flex: 1; padding: 13px; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .btn-cancel { background: #f0f0f0; color: #555; }
+  .btn-add { background: #007aff; color: #fff; }
+  .btn-add:active { background: #005fcb; }
+  .btn-cancel:active { background: #e0e0e0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Мой список</h1>
+  <div class="hint">
+    <span><span class="dot" style="background:#ff3b30"></span>Свайп влево — удалить</span>
+    <span><span class="dot" style="background:#34c759"></span>Влево↑ — вверх</span>
+    <span><span class="dot" style="background:#007aff"></span>Влево↓ — вниз</span>
+  </div>
+</header>
+
+<div id="list-container"></div>
+
+<div class="toast" id="toast"></div>
+
+<button class="add-btn" id="add-btn" title="Добавить">+</button>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h2>Новый элемент</h2>
+    <input type="text" id="input-line1" placeholder="Название (обязательно)" maxlength="60">
+    <input type="text" id="input-line2" placeholder="Подпись (необязательно)" maxlength="80">
+    <div class="modal-actions">
+      <button class="btn btn-cancel" id="btn-cancel">Отмена</button>
+      <button class="btn btn-add" id="btn-confirm">Добавить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+let items = [
+  { id: 1, line1: 'Молоко 3.2%', line2: '2 пакета, магазин у дома' },
+  { id: 2, line1: 'Хлеб ржаной' },
+  { id: 3, line1: 'Яблоки', line2: 'Голден, около 1.5 кг' },
+  { id: 4, line1: 'Кофе', line2: 'Арабика, зерно, 250 г' },
+  { id: 5, line1: 'Зубная паста' },
+  { id: 6, line1: 'Шампунь', line2: 'Для нормальных волос' },
+  { id: 7, line1: 'Стиральный порошок', line2: 'Автомат, 3 кг' },
+  { id: 8, line1: 'Батарейки AA', line2: '4 штуки' },
+];
+let nextId = 9;
+
+const container = document.getElementById('list-container');
+
+function render() {
+  container.innerHTML = '';
+  if (items.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>Список пуст. Нажмите + чтобы добавить.</p></div>`;
+    return;
+  }
+  items.forEach((item, idx) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'list-item-wrapper';
+    wrapper.dataset.id = item.id;
+
+    const actionBg = document.createElement('div');
+    actionBg.className = 'action-bg del';
+    actionBg.innerHTML = `<span class="action-icon">🗑</span><span class="action-label">Удалить</span>`;
+
+    const el = document.createElement('div');
+    el.className = 'list-item';
+    el.innerHTML = `
+      <div class="item-line1">${escHtml(item.line1)}</div>
+      ${item.line2 ? `<div class="item-line2">${escHtml(item.line2)}</div>` : ''}
+      <div class="item-index">${idx + 1}</div>
+    `;
+
+    wrapper.appendChild(actionBg);
+    wrapper.appendChild(el);
+    container.appendChild(wrapper);
+    bindGesture(el, actionBg, item.id);
+  });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+const THRESHOLD_H = 55;
+const THRESHOLD_V = 45;
+const DELETE_COMMIT = 120;
+
+function bindGesture(el, actionBg, itemId) {
+  let startX, startY, curX, curY;
+  let active = false;
+
+  el.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    startX = t.clientX;
+    startY = t.clientY;
+    curX = startX;
+    curY = startY;
+    active = true;
+    el.style.transition = 'none';
+  }, { passive: true });
+
+  el.addEventListener('touchmove', e => {
+    if (!active) return;
+    const t = e.touches[0];
+    curX = t.clientX;
+    curY = t.clientY;
+    const dx = curX - startX;
+    const dy = curY - startY;
+
+    if (dx >= 0) {
+      el.style.transform = '';
+      actionBg.style.opacity = '0';
+      actionBg.className = 'action-bg del';
+      return;
+    }
+
+    e.preventDefault();
+
+    const absDx = Math.abs(dx);
+    const progress = Math.min(absDx / DELETE_COMMIT, 1);
+
+    if (absDx > THRESHOLD_H) {
+      if (dy < -THRESHOLD_V) {
+        actionBg.className = 'action-bg up';
+        actionBg.innerHTML = `<span class="action-icon">⬆️</span><span class="action-label">Вверх</span>`;
+      } else if (dy > THRESHOLD_V) {
+        actionBg.className = 'action-bg down';
+        actionBg.innerHTML = `<span class="action-icon">⬇️</span><span class="action-label">Вниз</span>`;
+      } else {
+        actionBg.className = 'action-bg del';
+        actionBg.innerHTML = `<span class="action-icon">🗑</span><span class="action-label">Удалить</span>`;
+      }
+    }
+
+    el.style.transform = `translateX(${dx}px)`;
+    actionBg.style.opacity = Math.min(progress * 1.5, 1).toString();
+  }, { passive: false });
+
+  const onEnd = () => {
+    if (!active) return;
+    active = false;
+
+    const dx = curX - startX;
+    const dy = curY - startY;
+
+    el.style.transition = 'transform 0.3s cubic-bezier(.4,0,.2,1)';
+    el.style.transform = '';
+    actionBg.style.opacity = '0';
+
+    if (dx < -THRESHOLD_H) {
+      if (dy < -THRESHOLD_V) {
+        doMoveUp(itemId);
+      } else if (dy > THRESHOLD_V) {
+        doMoveDown(itemId);
+      } else {
+        doDelete(itemId, el.closest('.list-item-wrapper'));
+      }
+    }
+  };
+
+  el.addEventListener('touchend', onEnd);
+  el.addEventListener('touchcancel', onEnd);
+}
+
+function doDelete(itemId, wrapper) {
+  wrapper.style.transition = 'max-height 0.3s ease, opacity 0.3s ease, margin 0.3s ease';
+  wrapper.style.maxHeight = wrapper.offsetHeight + 'px';
+  wrapper.style.overflow = 'hidden';
+
+  requestAnimationFrame(() => {
+    wrapper.style.maxHeight = '0';
+    wrapper.style.opacity = '0';
+    wrapper.style.marginBottom = '0';
+  });
+
+  setTimeout(() => {
+    items = items.filter(i => i.id !== itemId);
+    render();
+    showToast('Элемент удалён');
+  }, 310);
+}
+
+function doMoveUp(itemId) {
+  const idx = items.findIndex(i => i.id === itemId);
+  if (idx <= 0) { showToast('Уже в начале'); return; }
+  [items[idx - 1], items[idx]] = [items[idx], items[idx - 1]];
+  render();
+  showToast('Перемещено вверх');
+}
+
+function doMoveDown(itemId) {
+  const idx = items.findIndex(i => i.id === itemId);
+  if (idx >= items.length - 1) { showToast('Уже в конце'); return; }
+  [items[idx], items[idx + 1]] = [items[idx + 1], items[idx]];
+  render();
+  showToast('Перемещено вниз');
+}
+
+let toastTimer;
+const toastEl = document.getElementById('toast');
+
+function showToast(msg) {
+  clearTimeout(toastTimer);
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+const overlay = document.getElementById('modal-overlay');
+const input1  = document.getElementById('input-line1');
+const input2  = document.getElementById('input-line2');
+
+document.getElementById('add-btn').addEventListener('click', () => {
+  input1.value = '';
+  input2.value = '';
+  overlay.classList.add('open');
+  setTimeout(() => input1.focus(), 300);
+});
+
+document.getElementById('btn-cancel').addEventListener('click', closeModal);
+overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+document.getElementById('btn-confirm').addEventListener('click', addItem);
+[input1, input2].forEach(inp => inp.addEventListener('keydown', e => {
+  if (e.key === 'Enter') addItem();
+}));
+
+function addItem() {
+  const l1 = input1.value.trim();
+  if (!l1) { input1.focus(); input1.style.borderColor = '#ff3b30'; return; }
+  input1.style.borderColor = '';
+  const l2 = input2.value.trim();
+  items.push({ id: nextId++, line1: l1, line2: l2 || undefined });
+  render();
+  closeModal();
+  showToast('Элемент добавлен');
+}
+
+function closeModal() {
+  overlay.classList.remove('open');
+}
+
+render();
+</script>
+</body>
+</html>
