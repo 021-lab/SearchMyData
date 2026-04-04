@@ -12,7 +12,11 @@
     background: #f0f2f5;
     min-height: 100vh;
     overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
   }
+
+  input, textarea { user-select: text; -webkit-user-select: text; }
 
   header {
     background: #fff;
@@ -259,6 +263,10 @@ function escHtml(s) {
 
 // ─── Drag (long press) ───────────────────────────────────────────────────────
 let dragState = null;
+let autoScrollRAF = null;
+let autoScrollClientY = 0;
+const EDGE_ZONE = 80;
+const MAX_SCROLL = 14;
 
 document.addEventListener('touchmove', e => {
   if (!dragState) return;
@@ -280,21 +288,27 @@ function startDrag(wrapper, clientY) {
   listItem.classList.remove('pressing');
   listItem.style.transition = 'none';
   wrapper.classList.add('is-dragging');
+  autoScrollClientY = clientY;
   dragState = { wrapper, lastClientY: clientY, offsetY: 0 };
+  startAutoScroll();
 }
 
 function updateDrag(clientY) {
   const { wrapper } = dragState;
   dragState.offsetY += (clientY - dragState.lastClientY) * 2;
   dragState.lastClientY = clientY;
+  autoScrollClientY = clientY;
   wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+  checkSwap();
+}
 
+function checkSwap() {
+  const { wrapper } = dragState;
   const all = [...container.querySelectorAll('.list-item-wrapper')];
   const idx = all.indexOf(wrapper);
   const dragRect = wrapper.getBoundingClientRect();
   const mid = dragRect.top + dragRect.height / 2;
 
-  // Swap with previous
   if (idx > 0) {
     const prev = all[idx - 1];
     const pr = prev.getBoundingClientRect();
@@ -305,7 +319,6 @@ function updateDrag(clientY) {
       return;
     }
   }
-  // Swap with next
   if (idx < all.length - 1) {
     const next = all[idx + 1];
     const nr = next.getBoundingClientRect();
@@ -317,7 +330,39 @@ function updateDrag(clientY) {
   }
 }
 
+function startAutoScroll() {
+  if (autoScrollRAF) return;
+  autoScrollRAF = requestAnimationFrame(autoScrollStep);
+}
+
+function stopAutoScroll() {
+  if (autoScrollRAF) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
+}
+
+function autoScrollStep() {
+  if (!dragState) { autoScrollRAF = null; return; }
+
+  const vh = window.innerHeight;
+  let speed = 0;
+  if (autoScrollClientY < EDGE_ZONE) {
+    speed = -((EDGE_ZONE - autoScrollClientY) / EDGE_ZONE) * MAX_SCROLL;
+  } else if (autoScrollClientY > vh - EDGE_ZONE) {
+    speed = ((autoScrollClientY - (vh - EDGE_ZONE)) / EDGE_ZONE) * MAX_SCROLL;
+  }
+
+  if (speed !== 0) {
+    window.scrollBy(0, speed);
+    // Compensate transform so element stays under finger
+    dragState.offsetY += speed;
+    dragState.wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+    checkSwap();
+  }
+
+  autoScrollRAF = requestAnimationFrame(autoScrollStep);
+}
+
 function finalizeDrag() {
+  stopAutoScroll();
   const { wrapper } = dragState;
   dragState = null;
 
@@ -329,10 +374,8 @@ function finalizeDrag() {
   setTimeout(() => {
     wrapper.style.transition = '';
     wrapper.classList.remove('is-dragging');
-    // Sync items array from new DOM order
     const wrappers = [...container.querySelectorAll('.list-item-wrapper')];
     items = wrappers.map(w => items.find(it => it.id === +w.dataset.id)).filter(Boolean);
-    // Update index numbers in place
     wrappers.forEach((w, i) => {
       const idx = w.querySelector('.item-index');
       if (idx) idx.textContent = i + 1;
