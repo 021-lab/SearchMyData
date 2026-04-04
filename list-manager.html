@@ -264,8 +264,6 @@ function escHtml(s) {
 // ─── Drag (long press) ───────────────────────────────────────────────────────
 let dragState = null;
 let autoScrollRAF = null;
-let autoScrollClientY = 0;
-const EDGE_ZONE = 80;
 const MAX_SCROLL = 14;
 
 document.addEventListener('touchmove', e => {
@@ -288,7 +286,6 @@ function startDrag(wrapper, clientY) {
   listItem.classList.remove('pressing');
   listItem.style.transition = 'none';
   wrapper.classList.add('is-dragging');
-  autoScrollClientY = clientY;
   dragState = { wrapper, lastClientY: clientY, offsetY: 0 };
   startAutoScroll();
 }
@@ -297,7 +294,6 @@ function updateDrag(clientY) {
   const { wrapper } = dragState;
   dragState.offsetY += (clientY - dragState.lastClientY) * 2;
   dragState.lastClientY = clientY;
-  autoScrollClientY = clientY;
   wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
   checkSwap();
 }
@@ -342,17 +338,26 @@ function stopAutoScroll() {
 function autoScrollStep() {
   if (!dragState) { autoScrollRAF = null; return; }
 
-  const vh = window.innerHeight;
+  const { wrapper } = dragState;
+  const others = [...container.querySelectorAll('.list-item-wrapper')].filter(w => w !== wrapper);
+
   let speed = 0;
-  if (autoScrollClientY < EDGE_ZONE) {
-    speed = -((EDGE_ZONE - autoScrollClientY) / EDGE_ZONE) * MAX_SCROLL;
-  } else if (autoScrollClientY > vh - EDGE_ZONE) {
-    speed = ((autoScrollClientY - (vh - EDGE_ZONE)) / EDGE_ZONE) * MAX_SCROLL;
+  if (others.length > 0) {
+    const dragRect = wrapper.getBoundingClientRect();
+    const firstRect = others[0].getBoundingClientRect();
+    const lastRect  = others[others.length - 1].getBoundingClientRect();
+
+    if (dragRect.top < firstRect.top) {
+      // Element above the first item — scroll up, faster the further it goes
+      speed = -Math.min((firstRect.top - dragRect.top) / 8, MAX_SCROLL);
+    } else if (dragRect.bottom > lastRect.bottom) {
+      // Element below the last item — scroll down
+      speed = Math.min((dragRect.bottom - lastRect.bottom) / 8, MAX_SCROLL);
+    }
   }
 
   if (speed !== 0) {
     window.scrollBy(0, speed);
-    // Compensate transform so element stays under finger
     dragState.offsetY += speed;
     dragState.wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
     checkSwap();
