@@ -24,183 +24,122 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   }
 
-  header h1 {
-    font-size: 20px;
-    font-weight: 700;
-    color: #1a1a2e;
-  }
+  header h1 { font-size: 20px; font-weight: 700; color: #1a1a2e; }
 
   .hint {
-    font-size: 11px;
-    color: #999;
-    margin-top: 6px;
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
+    font-size: 11px; color: #999; margin-top: 6px;
+    display: flex; gap: 10px; flex-wrap: wrap;
   }
+  .hint span { display: flex; align-items: center; gap: 4px; }
+  .hint .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-  .hint span {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
+  #list-container { padding: 12px 0; position: relative; }
 
-  .hint .dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  #list-container {
-    padding: 12px 0;
-    position: relative;
-  }
-
+  /* ── Swipe action bg ── */
   .list-item-wrapper {
     position: relative;
     overflow: hidden;
     margin-bottom: 1px;
   }
+  .list-item-wrapper.is-dragging { overflow: visible; z-index: 50; }
 
   .action-bg {
-    position: absolute;
-    top: 0; right: 0; bottom: 0;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding-right: 20px;
-    min-width: 80px;
-    font-size: 13px;
-    font-weight: 600;
-    color: #fff;
-    background: #ff3b30;
-    border-radius: 0;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.1s;
+    position: absolute; top: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: flex-end;
+    padding-right: 20px; min-width: 80px;
+    font-size: 13px; font-weight: 600; color: #fff;
+    pointer-events: none; opacity: 0; transition: opacity 0.1s;
   }
-
   .action-bg .action-icon { font-size: 20px; }
   .action-bg .action-label { margin-left: 6px; }
-
   .action-bg.up   { background: #34c759; }
   .action-bg.down { background: #007aff; }
   .action-bg.del  { background: #ff3b30; }
 
+  /* ── List item ── */
   .list-item {
     background: #fff;
     padding: 14px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    display: flex; flex-direction: column; gap: 4px;
     border-bottom: 1px solid #f0f0f0;
     position: relative;
     will-change: transform;
-    transition: box-shadow 0.15s;
     user-select: none;
     touch-action: pan-y;
+    transition: box-shadow 0.15s, border 0.15s, background 0.15s;
   }
-
   .list-item-wrapper:first-child .list-item { border-top: none; }
 
-  .list-item.dragging {
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    z-index: 10;
+  /* Long-press indicator */
+  .list-item.pressing {
+    background: #f5f8ff;
+  }
+
+  /* Dragging state */
+  .list-item-wrapper.is-dragging .list-item {
+    box-shadow: 0 8px 28px rgba(0,122,255,0.22), 0 2px 8px rgba(0,0,0,0.1);
+    border: 2px solid #007aff;
+    border-radius: 10px;
+    background: #f8fbff;
+    touch-action: none;
   }
 
   .item-line1 {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1a1a2e;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 16px; font-weight: 600; color: #1a1a2e;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-
   .item-line2 {
-    font-size: 13px;
-    color: #888;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 13px; color: #888;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-
   .item-index {
-    position: absolute;
-    right: 14px;
-    top: 50%;
+    position: absolute; right: 14px; top: 50%;
     transform: translateY(-50%);
-    font-size: 12px;
-    color: #ccc;
-    font-weight: 500;
+    font-size: 12px; color: #ccc; font-weight: 500;
   }
 
+  /* ── Toast ── */
   .toast {
-    position: fixed;
-    bottom: 30px;
-    left: 50%;
+    position: fixed; bottom: 30px; left: 50%;
     transform: translateX(-50%) translateY(20px);
-    background: rgba(30,30,30,0.88);
-    color: #fff;
-    padding: 10px 20px;
-    border-radius: 24px;
-    font-size: 14px;
-    font-weight: 500;
-    opacity: 0;
-    transition: opacity 0.2s, transform 0.2s;
-    pointer-events: none;
-    white-space: nowrap;
-    z-index: 999;
-    backdrop-filter: blur(4px);
+    background: rgba(30,30,30,0.88); color: #fff;
+    padding: 10px 20px; border-radius: 24px;
+    font-size: 14px; font-weight: 500;
+    opacity: 0; transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none; white-space: nowrap;
+    z-index: 999; backdrop-filter: blur(4px);
   }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  .toast.show {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 60px 20px;
-    color: #bbb;
-  }
-
+  /* ── Empty state ── */
+  .empty-state { text-align: center; padding: 60px 20px; color: #bbb; }
   .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
   .empty-state p { font-size: 15px; }
 
+  /* ── FAB ── */
   .add-btn {
-    position: fixed;
-    bottom: 28px;
-    right: 20px;
-    width: 56px; height: 56px;
-    border-radius: 50%;
-    background: #007aff;
-    color: #fff;
-    border: none;
-    font-size: 28px;
-    cursor: pointer;
+    position: fixed; bottom: 28px; right: 20px;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: #007aff; color: #fff; border: none;
+    font-size: 28px; cursor: pointer;
     box-shadow: 0 4px 16px rgba(0,122,255,0.4);
     display: flex; align-items: center; justify-content: center;
-    z-index: 200;
-    transition: transform 0.1s, background 0.1s;
+    z-index: 200; transition: transform 0.1s, background 0.1s;
   }
   .add-btn:active { transform: scale(0.92); background: #005fcb; }
 
-  /* modal */
+  /* ── Modal ── */
   .modal-overlay {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.4);
     display: flex; align-items: flex-end;
-    z-index: 500;
-    opacity: 0; pointer-events: none;
+    z-index: 500; opacity: 0; pointer-events: none;
     transition: opacity 0.2s;
   }
   .modal-overlay.open { opacity: 1; pointer-events: all; }
   .modal {
-    background: #fff;
-    width: 100%;
-    border-radius: 20px 20px 0 0;
-    padding: 20px 20px 36px;
+    background: #fff; width: 100%;
+    border-radius: 20px 20px 0 0; padding: 20px 20px 36px;
     transform: translateY(100%);
     transition: transform 0.25s cubic-bezier(.4,0,.2,1);
   }
@@ -209,8 +148,7 @@
   .modal input {
     width: 100%; border: 1.5px solid #e0e0e0; border-radius: 10px;
     padding: 12px 14px; font-size: 15px; margin-bottom: 10px;
-    outline: none; color: #1a1a2e;
-    transition: border-color 0.15s;
+    outline: none; color: #1a1a2e; transition: border-color 0.15s;
   }
   .modal input:focus { border-color: #007aff; }
   .modal-actions { display: flex; gap: 10px; margin-top: 6px; }
@@ -226,17 +164,16 @@
 <header>
   <h1>Мой список</h1>
   <div class="hint">
-    <span><span class="dot" style="background:#ff3b30"></span>Свайп влево — удалить</span>
+    <span><span class="dot" style="background:#ff3b30"></span>Влево — удалить</span>
     <span><span class="dot" style="background:#34c759"></span>Влево↑ — вверх</span>
     <span><span class="dot" style="background:#007aff"></span>Влево↓ — вниз</span>
+    <span><span class="dot" style="background:#af52de"></span>Удержать — перетащить</span>
   </div>
 </header>
 
 <div id="list-container"></div>
-
 <div class="toast" id="toast"></div>
-
-<button class="add-btn" id="add-btn" title="Добавить">+</button>
+<button class="add-btn" id="add-btn">+</button>
 
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
@@ -255,16 +192,33 @@
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 let items = [
-  { id: 1, line1: 'Молоко 3.2%', line2: '2 пакета, магазин у дома' },
-  { id: 2, line1: 'Хлеб ржаной' },
-  { id: 3, line1: 'Яблоки', line2: 'Голден, около 1.5 кг' },
-  { id: 4, line1: 'Кофе', line2: 'Арабика, зерно, 250 г' },
-  { id: 5, line1: 'Зубная паста' },
-  { id: 6, line1: 'Шампунь', line2: 'Для нормальных волос' },
-  { id: 7, line1: 'Стиральный порошок', line2: 'Автомат, 3 кг' },
-  { id: 8, line1: 'Батарейки AA', line2: '4 штуки' },
+  { id:  1, line1: 'Молоко 3.2%',           line2: '2 пакета, магазин у дома' },
+  { id:  2, line1: 'Хлеб ржаной' },
+  { id:  3, line1: 'Яблоки',                line2: 'Голден, ~1.5 кг' },
+  { id:  4, line1: 'Кофе',                  line2: 'Арабика, зерно, 250 г' },
+  { id:  5, line1: 'Зубная паста' },
+  { id:  6, line1: 'Шампунь',               line2: 'Для нормальных волос' },
+  { id:  7, line1: 'Стиральный порошок',    line2: 'Автомат, 3 кг' },
+  { id:  8, line1: 'Батарейки AA',          line2: '4 штуки' },
+  { id:  9, line1: 'Сыр Гауда',             line2: '200 г, нарезка' },
+  { id: 10, line1: 'Яйца',                  line2: '10 штук, C1' },
+  { id: 11, line1: 'Масло сливочное',       line2: '82.5%, 200 г' },
+  { id: 12, line1: 'Греческий йогурт',      line2: '0%, 500 г' },
+  { id: 13, line1: 'Помидоры',              line2: '1 кг, черри' },
+  { id: 14, line1: 'Огурцы',                line2: '500 г' },
+  { id: 15, line1: 'Куриное филе',          line2: '1 кг, охлаждённое' },
+  { id: 16, line1: 'Макароны',              line2: 'Спагетти, 400 г' },
+  { id: 17, line1: 'Томатная паста',        line2: '2 банки по 140 г' },
+  { id: 18, line1: 'Оливковое масло',       line2: 'Extra Virgin, 500 мл' },
+  { id: 19, line1: 'Чай зелёный',           line2: '25 пакетиков' },
+  { id: 20, line1: 'Бананы',                line2: '1 кг' },
+  { id: 21, line1: 'Апельсины',             line2: '1.5 кг' },
+  { id: 22, line1: 'Туалетная бумага',      line2: '12 рулонов' },
+  { id: 23, line1: 'Мыло жидкое',           line2: 'Антибактериальное, 500 мл' },
+  { id: 24, line1: 'Сахар',                 line2: '1 кг, белый' },
+  { id: 25, line1: 'Соль',                  line2: 'Морская, мелкая, 500 г' },
 ];
-let nextId = 9;
+let nextId = 26;
 
 // ─── Render ──────────────────────────────────────────────────────────────────
 const container = document.getElementById('list-container');
@@ -295,7 +249,7 @@ function render() {
     wrapper.appendChild(actionBg);
     wrapper.appendChild(el);
     container.appendChild(wrapper);
-    bindGesture(el, actionBg, item.id);
+    bindGesture(el, actionBg, item.id, wrapper);
   });
 }
 
@@ -303,53 +257,146 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ─── Gesture ─────────────────────────────────────────────────────────────────
-const THRESHOLD_H = 55;   // min horizontal px to count as left-swipe
-const THRESHOLD_V = 45;   // min vertical px to determine up/down
-const DELETE_COMMIT = 120; // px to auto-commit delete
+// ─── Drag (long press) ───────────────────────────────────────────────────────
+let dragState = null;
 
-function bindGesture(el, actionBg, itemId) {
-  let startX, startY, curX, curY;
-  let active = false;
+document.addEventListener('touchmove', e => {
+  if (!dragState) return;
+  e.preventDefault();
+  updateDrag(e.touches[0].clientY);
+}, { passive: false });
+
+document.addEventListener('touchend', () => {
+  if (dragState) finalizeDrag();
+}, { passive: true });
+
+document.addEventListener('touchcancel', () => {
+  if (dragState) finalizeDrag();
+}, { passive: true });
+
+function startDrag(wrapper, clientY) {
+  if (navigator.vibrate) navigator.vibrate(30);
+  const listItem = wrapper.querySelector('.list-item');
+  listItem.classList.remove('pressing');
+  listItem.style.transition = 'none';
+  wrapper.classList.add('is-dragging');
+  dragState = { wrapper, lastClientY: clientY, offsetY: 0 };
+}
+
+function updateDrag(clientY) {
+  const { wrapper } = dragState;
+  dragState.offsetY += clientY - dragState.lastClientY;
+  dragState.lastClientY = clientY;
+  wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+
+  const all = [...container.querySelectorAll('.list-item-wrapper')];
+  const idx = all.indexOf(wrapper);
+  const dragRect = wrapper.getBoundingClientRect();
+  const mid = dragRect.top + dragRect.height / 2;
+
+  // Swap with previous
+  if (idx > 0) {
+    const prev = all[idx - 1];
+    const pr = prev.getBoundingClientRect();
+    if (mid < pr.top + pr.height / 2) {
+      container.insertBefore(wrapper, prev);
+      dragState.offsetY += pr.height + 1;
+      wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+      return;
+    }
+  }
+  // Swap with next
+  if (idx < all.length - 1) {
+    const next = all[idx + 1];
+    const nr = next.getBoundingClientRect();
+    if (mid > nr.top + nr.height / 2) {
+      container.insertBefore(next, wrapper);
+      dragState.offsetY -= nr.height + 1;
+      wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+    }
+  }
+}
+
+function finalizeDrag() {
+  const { wrapper } = dragState;
+  dragState = null;
+
+  const listItem = wrapper.querySelector('.list-item');
+  listItem.style.transition = '';
+  wrapper.style.transition = 'transform 0.22s cubic-bezier(.4,0,.2,1)';
+  wrapper.style.transform = '';
+
+  setTimeout(() => {
+    wrapper.style.transition = '';
+    wrapper.classList.remove('is-dragging');
+    // Sync items array from new DOM order
+    const wrappers = [...container.querySelectorAll('.list-item-wrapper')];
+    items = wrappers.map(w => items.find(it => it.id === +w.dataset.id)).filter(Boolean);
+    // Update index numbers in place
+    wrappers.forEach((w, i) => {
+      const idx = w.querySelector('.item-index');
+      if (idx) idx.textContent = i + 1;
+    });
+  }, 220);
+}
+
+// ─── Swipe gesture ───────────────────────────────────────────────────────────
+const SWIPE_H = 55;
+const SWIPE_V = 45;
+const DELETE_PX = 120;
+
+function bindGesture(el, actionBg, itemId, wrapper) {
+  let startX, startY, curX, curY, active = false, longTimer = null;
 
   el.addEventListener('touchstart', e => {
+    if (dragState) return;
     const t = e.touches[0];
-    startX = t.clientX;
-    startY = t.clientY;
-    curX = startX;
-    curY = startY;
+    startX = curX = t.clientX;
+    startY = curY = t.clientY;
     active = true;
     el.style.transition = 'none';
+    el.classList.add('pressing');
+
+    longTimer = setTimeout(() => {
+      longTimer = null;
+      active = false;
+      el.style.transform = '';
+      actionBg.style.opacity = '0';
+      startDrag(wrapper, curY);
+    }, 370);
   }, { passive: true });
 
   el.addEventListener('touchmove', e => {
+    if (dragState) return;
     if (!active) return;
     const t = e.touches[0];
-    curX = t.clientX;
-    curY = t.clientY;
+    curX = t.clientX; curY = t.clientY;
     const dx = curX - startX;
     const dy = curY - startY;
 
+    // Cancel long press if moved significantly
+    if (longTimer && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      clearTimeout(longTimer);
+      longTimer = null;
+      el.classList.remove('pressing');
+    }
+
     if (dx >= 0) {
-      // Not going left — reset
       el.style.transform = '';
       actionBg.style.opacity = '0';
       actionBg.className = 'action-bg del';
       return;
     }
 
-    // Moving left — prevent page scroll
     e.preventDefault();
-
     const absDx = Math.abs(dx);
-    const progress = Math.min(absDx / DELETE_COMMIT, 1);
+    const progress = Math.min(absDx / DELETE_PX, 1);
 
-    // Determine action type by diagonal
-    if (absDx > THRESHOLD_H) {
-      if (dy < -THRESHOLD_V) {
+    if (absDx > SWIPE_H) {
+      if (dy < -SWIPE_V) {
         actionBg.className = 'action-bg up';
         actionBg.innerHTML = `<span class="action-icon">⬆️</span><span class="action-label">Вверх</span>`;
-      } else if (dy > THRESHOLD_V) {
+      } else if (dy > SWIPE_V) {
         actionBg.className = 'action-bg down';
         actionBg.innerHTML = `<span class="action-icon">⬇️</span><span class="action-label">Вниз</span>`;
       } else {
@@ -363,28 +410,23 @@ function bindGesture(el, actionBg, itemId) {
   }, { passive: false });
 
   const onEnd = () => {
-    if (!active) return;
+    clearTimeout(longTimer);
+    longTimer = null;
+    el.classList.remove('pressing');
+    if (dragState || !active) return;
     active = false;
 
     const dx = curX - startX;
     const dy = curY - startY;
-    const absDx = Math.abs(dx);
 
     el.style.transition = 'transform 0.3s cubic-bezier(.4,0,.2,1)';
     el.style.transform = '';
     actionBg.style.opacity = '0';
 
-    if (dx < -THRESHOLD_H) {
-      if (dy < -THRESHOLD_V) {
-        // Move up
-        doMoveUp(itemId);
-      } else if (dy > THRESHOLD_V) {
-        // Move down
-        doMoveDown(itemId);
-      } else {
-        // Delete
-        doDelete(itemId, el.closest('.list-item-wrapper'));
-      }
+    if (dx < -SWIPE_H) {
+      if (dy < -SWIPE_V)      doMoveUp(itemId);
+      else if (dy > SWIPE_V)  doMoveDown(itemId);
+      else                     doDelete(itemId, wrapper);
     }
   };
 
@@ -397,13 +439,11 @@ function doDelete(itemId, wrapper) {
   wrapper.style.transition = 'max-height 0.3s ease, opacity 0.3s ease, margin 0.3s ease';
   wrapper.style.maxHeight = wrapper.offsetHeight + 'px';
   wrapper.style.overflow = 'hidden';
-
   requestAnimationFrame(() => {
     wrapper.style.maxHeight = '0';
     wrapper.style.opacity = '0';
     wrapper.style.marginBottom = '0';
   });
-
   setTimeout(() => {
     items = items.filter(i => i.id !== itemId);
     render();
@@ -430,7 +470,6 @@ function doMoveDown(itemId) {
 // ─── Toast ────────────────────────────────────────────────────────────────────
 let toastTimer;
 const toastEl = document.getElementById('toast');
-
 function showToast(msg) {
   clearTimeout(toastTimer);
   toastEl.textContent = msg;
@@ -438,25 +477,21 @@ function showToast(msg) {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
 }
 
-// ─── Add Item Modal ───────────────────────────────────────────────────────────
+// ─── Add item modal ───────────────────────────────────────────────────────────
 const overlay = document.getElementById('modal-overlay');
 const input1  = document.getElementById('input-line1');
 const input2  = document.getElementById('input-line2');
 
 document.getElementById('add-btn').addEventListener('click', () => {
-  input1.value = '';
-  input2.value = '';
+  input1.value = ''; input2.value = '';
   overlay.classList.add('open');
   setTimeout(() => input1.focus(), 300);
 });
 
 document.getElementById('btn-cancel').addEventListener('click', closeModal);
 overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
-
 document.getElementById('btn-confirm').addEventListener('click', addItem);
-[input1, input2].forEach(inp => inp.addEventListener('keydown', e => {
-  if (e.key === 'Enter') addItem();
-}));
+[input1, input2].forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') addItem(); }));
 
 function addItem() {
   const l1 = input1.value.trim();
@@ -469,9 +504,7 @@ function addItem() {
   showToast('Элемент добавлен');
 }
 
-function closeModal() {
-  overlay.classList.remove('open');
-}
+function closeModal() { overlay.classList.remove('open'); }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 render();
