@@ -360,12 +360,13 @@ function autoScrollStep() {
   const { wrapper } = dragState;
   const vh = window.innerHeight;
 
-  // Find items currently visible in the viewport (exclude the dragged one)
+  // Find items currently visible in the viewport (exclude the dragged one and items hidden under header)
+  const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
   const visible = [...container.querySelectorAll('.list-item-wrapper')]
     .filter(w => w !== wrapper)
     .filter(w => {
       const r = w.getBoundingClientRect();
-      return r.bottom > 0 && r.top < vh;
+      return r.bottom > headerBottom && r.top < vh;
     });
 
   updateBoundaryMarkers(visible);
