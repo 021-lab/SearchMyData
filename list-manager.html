@@ -285,7 +285,7 @@ function startDrag(wrapper, clientY) {
 
 function updateDrag(clientY) {
   const { wrapper } = dragState;
-  dragState.offsetY += clientY - dragState.lastClientY;
+  dragState.offsetY += (clientY - dragState.lastClientY) * 2;
   dragState.lastClientY = clientY;
   wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
 
