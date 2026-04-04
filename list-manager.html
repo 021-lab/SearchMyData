@@ -79,6 +79,10 @@
     background: #f5f8ff;
   }
 
+  /* Boundary markers (visible during drag) */
+  .boundary-top .list-item    { border-top: 3px solid #ff9500 !important; }
+  .boundary-bottom .list-item { border-bottom: 3px solid #34c759 !important; }
+
   /* Dragging state */
   .list-item-wrapper.is-dragging .list-item {
     box-shadow: 0 8px 28px rgba(0,122,255,0.22), 0 2px 8px rgba(0,0,0,0.1);
@@ -265,6 +269,21 @@ function escHtml(s) {
 let dragState = null;
 let autoScrollRAF = null;
 const MAX_SCROLL = 14;
+let markerTop = null, markerBottom = null;
+
+function updateBoundaryMarkers(visibleItems) {
+  if (markerTop)    { markerTop.classList.remove('boundary-top');       markerTop = null; }
+  if (markerBottom) { markerBottom.classList.remove('boundary-bottom'); markerBottom = null; }
+  if (!visibleItems || visibleItems.length === 0) return;
+  markerTop    = visibleItems[0];
+  markerBottom = visibleItems[visibleItems.length - 1];
+  markerTop.classList.add('boundary-top');
+  if (markerTop !== markerBottom) markerBottom.classList.add('boundary-bottom');
+}
+
+function clearBoundaryMarkers() {
+  updateBoundaryMarkers([]);
+}
 
 document.addEventListener('touchmove', e => {
   if (!dragState) return;
@@ -339,20 +358,30 @@ function autoScrollStep() {
   if (!dragState) { autoScrollRAF = null; return; }
 
   const { wrapper } = dragState;
-  const others = [...container.querySelectorAll('.list-item-wrapper')].filter(w => w !== wrapper);
+  const vh = window.innerHeight;
+
+  // Find items currently visible in the viewport (exclude the dragged one)
+  const visible = [...container.querySelectorAll('.list-item-wrapper')]
+    .filter(w => w !== wrapper)
+    .filter(w => {
+      const r = w.getBoundingClientRect();
+      return r.bottom > 0 && r.top < vh;
+    });
+
+  updateBoundaryMarkers(visible);
 
   let speed = 0;
-  if (others.length > 0) {
-    const dragRect = wrapper.getBoundingClientRect();
-    const firstRect = others[0].getBoundingClientRect();
-    const lastRect  = others[others.length - 1].getBoundingClientRect();
+  if (visible.length > 0) {
+    const dragRect   = wrapper.getBoundingClientRect();
+    const topBound   = visible[0].getBoundingClientRect().top;
+    const bottomBound = visible[visible.length - 1].getBoundingClientRect().bottom;
 
-    if (dragRect.top < firstRect.top) {
-      // Element above the first item — scroll up, faster the further it goes
-      speed = -Math.min((firstRect.top - dragRect.top) / 8, MAX_SCROLL);
-    } else if (dragRect.bottom > lastRect.bottom) {
-      // Element below the last item — scroll down
-      speed = Math.min((dragRect.bottom - lastRect.bottom) / 8, MAX_SCROLL);
+    if (dragRect.top < topBound) {
+      // Dragged element went above the topmost visible item → scroll up
+      speed = -Math.min((topBound - dragRect.top) / 6, MAX_SCROLL);
+    } else if (dragRect.bottom > bottomBound) {
+      // Dragged element went below the bottommost visible item → scroll down
+      speed = Math.min((dragRect.bottom - bottomBound) / 6, MAX_SCROLL);
     }
   }
 
@@ -368,6 +397,7 @@ function autoScrollStep() {
 
 function finalizeDrag() {
   stopAutoScroll();
+  clearBoundaryMarkers();
   const { wrapper } = dragState;
   dragState = null;
 
