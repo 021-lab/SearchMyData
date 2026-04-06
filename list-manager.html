@@ -314,6 +314,7 @@ function updateDrag(clientY) {
   dragState.offsetY += (clientY - dragState.lastClientY) * 2;
   dragState.lastClientY = clientY;
   wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+  clampToBoundary();
   checkSwap();
 }
 
@@ -345,6 +346,43 @@ function checkSwap() {
   }
 }
 
+function getVisibleBounds() {
+  if (!dragState) return null;
+  const { wrapper } = dragState;
+  const vh = window.innerHeight;
+  const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
+  const visible = [...container.querySelectorAll('.list-item-wrapper')]
+    .filter(w => w !== wrapper)
+    .filter(w => { const r = w.getBoundingClientRect(); return r.bottom > headerBottom && r.top < vh; });
+  if (!visible.length) return null;
+  return {
+    visible,
+    top:    visible[0].getBoundingClientRect().top,
+    bottom: visible[visible.length - 1].getBoundingClientRect().bottom,
+  };
+}
+
+// Clamp element so it cannot go beyond the first/last visible items.
+// Returns true if clamped (element is at a boundary).
+function clampToBoundary() {
+  if (!dragState) return false;
+  const bounds = getVisibleBounds();
+  if (!bounds) return false;
+  const { wrapper } = dragState;
+  const r = wrapper.getBoundingClientRect();
+  if (r.top < bounds.top) {
+    dragState.offsetY += bounds.top - r.top;
+    wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+    return true;
+  }
+  if (r.bottom > bounds.bottom) {
+    dragState.offsetY -= r.bottom - bounds.bottom;
+    wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+    return true;
+  }
+  return false;
+}
+
 function startAutoScroll() {
   if (autoScrollRAF) return;
   autoScrollRAF = requestAnimationFrame(autoScrollStep);
@@ -357,40 +395,28 @@ function stopAutoScroll() {
 function autoScrollStep() {
   if (!dragState) { autoScrollRAF = null; return; }
 
-  const { wrapper } = dragState;
-  const vh = window.innerHeight;
+  const bounds = getVisibleBounds();
+  updateBoundaryMarkers(bounds ? bounds.visible : []);
 
-  // Find items currently visible in the viewport (exclude the dragged one and items hidden under header)
-  const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
-  const visible = [...container.querySelectorAll('.list-item-wrapper')]
-    .filter(w => w !== wrapper)
-    .filter(w => {
-      const r = w.getBoundingClientRect();
-      return r.bottom > headerBottom && r.top < vh;
-    });
+  if (bounds) {
+    const dragRect = dragState.wrapper.getBoundingClientRect();
 
-  updateBoundaryMarkers(visible);
-
-  let speed = 0;
-  if (visible.length > 0) {
-    const dragRect   = wrapper.getBoundingClientRect();
-    const topBound   = visible[0].getBoundingClientRect().top;
-    const bottomBound = visible[visible.length - 1].getBoundingClientRect().bottom;
-
-    if (dragRect.top < topBound) {
-      // Dragged element went above the topmost visible item → scroll up
-      speed = -Math.min((topBound - dragRect.top) / 6, MAX_SCROLL);
-    } else if (dragRect.bottom > bottomBound) {
-      // Dragged element went below the bottommost visible item → scroll down
-      speed = Math.min((dragRect.bottom - bottomBound) / 6, MAX_SCROLL);
+    if (dragRect.top < bounds.top) {
+      const speed = -Math.min((bounds.top - dragRect.top) / 6, MAX_SCROLL);
+      window.scrollBy(0, speed);
+      // Compensate so element stays near boundary (don't track finger during scroll)
+      dragState.offsetY += speed;
+      dragState.wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+      clampToBoundary();
+      checkSwap();
+    } else if (dragRect.bottom > bounds.bottom) {
+      const speed = Math.min((dragRect.bottom - bounds.bottom) / 6, MAX_SCROLL);
+      window.scrollBy(0, speed);
+      dragState.offsetY += speed;
+      dragState.wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+      clampToBoundary();
+      checkSwap();
     }
-  }
-
-  if (speed !== 0) {
-    window.scrollBy(0, speed);
-    dragState.offsetY += speed;
-    dragState.wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-    checkSwap();
   }
 
   autoScrollRAF = requestAnimationFrame(autoScrollStep);
