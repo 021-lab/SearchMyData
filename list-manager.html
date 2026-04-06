@@ -398,22 +398,26 @@ function autoScrollStep() {
   const bounds = getVisibleBounds();
   updateBoundaryMarkers(bounds ? bounds.visible : []);
 
-  if (bounds) {
-    const dragRect = dragState.wrapper.getBoundingClientRect();
+  // Scroll is triggered by finger position near screen edges (independent of element position).
+  // Element is visually clamped at boundary by clampToBoundary() in updateDrag.
+  const clientY = dragState.lastClientY;
+  const vh = window.innerHeight;
+  const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
+  const ZONE = 72; // px from edge where scroll activates
 
-    if (dragRect.top < bounds.top) {
-      const speed = -Math.min((bounds.top - dragRect.top) / 6, MAX_SCROLL);
-      window.scrollBy(0, speed);
-      dragState.offsetY += speed;
-      dragState.wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-      checkSwap();
-    } else if (dragRect.bottom > bounds.bottom) {
-      const speed = Math.min((dragRect.bottom - bounds.bottom) / 6, MAX_SCROLL);
-      window.scrollBy(0, speed);
-      dragState.offsetY += speed;
-      dragState.wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-      checkSwap();
-    }
+  let speed = 0;
+  if (clientY < headerBottom + ZONE) {
+    speed = -Math.min(((headerBottom + ZONE) - clientY) / 5, MAX_SCROLL);
+  } else if (clientY > vh - ZONE) {
+    speed = Math.min((clientY - (vh - ZONE)) / 5, MAX_SCROLL);
+  }
+
+  if (speed !== 0) {
+    window.scrollBy(0, speed);
+    dragState.offsetY += speed;
+    dragState.wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+    clampToBoundary();
+    checkSwap();
   }
 
   autoScrollRAF = requestAnimationFrame(autoScrollStep);
