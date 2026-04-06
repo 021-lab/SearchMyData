@@ -404,17 +404,14 @@ function autoScrollStep() {
     if (dragRect.top < bounds.top) {
       const speed = -Math.min((bounds.top - dragRect.top) / 6, MAX_SCROLL);
       window.scrollBy(0, speed);
-      // Compensate so element stays near boundary (don't track finger during scroll)
       dragState.offsetY += speed;
       dragState.wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-      clampToBoundary();
       checkSwap();
     } else if (dragRect.bottom > bounds.bottom) {
       const speed = Math.min((dragRect.bottom - bounds.bottom) / 6, MAX_SCROLL);
       window.scrollBy(0, speed);
       dragState.offsetY += speed;
       dragState.wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-      clampToBoundary();
       checkSwap();
     }
   }
