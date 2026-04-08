@@ -362,7 +362,7 @@ function getVisibleBounds() {
   };
 }
 
-// Clamp element to viewport edges (header bottom ↔ viewport bottom).
+// Clamp element to viewport edges (header bottom ↔ viewport bottom + 30px overshoot for swap).
 function clampToBoundary() {
   if (!dragState) return;
   const { wrapper } = dragState;
@@ -372,8 +372,8 @@ function clampToBoundary() {
   if (r.top < headerBottom) {
     dragState.offsetY += headerBottom - r.top;
     wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-  } else if (r.bottom > vh) {
-    dragState.offsetY -= r.bottom - vh;
+  } else if (r.bottom > vh + 30) {          // 30px overshoot so mid can pass last item's mid
+    dragState.offsetY -= r.bottom - (vh + 30);
     wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
   }
 }
@@ -403,12 +403,15 @@ function autoScrollStep() {
 
   const dragRect = wrapper.getBoundingClientRect();
 
+  // DOM order including dragged item
+  const allWithDragged = [...container.querySelectorAll('.list-item-wrapper')];
+  const draggedIsFirst = allWithDragged[0] === wrapper;
+  const draggedIsLast  = allWithDragged[allWithDragged.length - 1] === wrapper;
+
   // ── Scroll UP ──────────────────────────────────────────────────────────────
   if (dragRect.top < headerBottom) {
-    // Stop condition: first list item is already visible → drop position exists above it
-    const firstRect = all.length ? all[0].getBoundingClientRect() : null;
-    const listTopReached = firstRect && firstRect.top >= headerBottom;
-    if (!listTopReached) {
+    // Stop as soon as dragged has swapped to first position — nowhere left to go
+    if (!draggedIsFirst) {
       const speed = -Math.min((headerBottom - dragRect.top) / 5 + 2, MAX_SCROLL);
       window.scrollBy(0, speed);
       dragState.offsetY += speed;
@@ -419,10 +422,8 @@ function autoScrollStep() {
 
   // ── Scroll DOWN ────────────────────────────────────────────────────────────
   } else if (dragRect.bottom > vh) {
-    // Stop condition: last list item is already visible → drop position exists below it
-    const lastRect = all.length ? all[all.length - 1].getBoundingClientRect() : null;
-    const listBottomReached = lastRect && lastRect.bottom <= vh;
-    if (!listBottomReached) {
+    // Stop as soon as dragged has swapped to last position — nowhere left to go
+    if (!draggedIsLast) {
       const speed = Math.min((dragRect.bottom - vh) / 5 + 2, MAX_SCROLL);
       window.scrollBy(0, speed);
       dragState.offsetY += speed;
