@@ -369,8 +369,8 @@ function clampToBoundary() {
   const vh = window.innerHeight;
   const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
   const r = wrapper.getBoundingClientRect();
-  if (r.top < headerBottom) {
-    dragState.offsetY += headerBottom - r.top;
+  if (r.top < headerBottom - 30) {          // 30px overshoot so mid can pass first item's mid
+    dragState.offsetY += (headerBottom - 30) - r.top;
     wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
   } else if (r.bottom > vh + 30) {          // 30px overshoot so mid can pass last item's mid
     dragState.offsetY -= r.bottom - (vh + 30);
