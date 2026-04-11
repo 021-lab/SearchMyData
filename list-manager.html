@@ -314,6 +314,7 @@ function updateDrag(clientY) {
   dragState.offsetY += (clientY - dragState.lastClientY) * 2;
   dragState.lastClientY = clientY;
   wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+  clampToBoundary();
   checkSwap();
 }
 
@@ -345,6 +346,38 @@ function checkSwap() {
   }
 }
 
+function getVisibleBounds() {
+  if (!dragState) return null;
+  const { wrapper } = dragState;
+  const vh = window.innerHeight;
+  const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
+  const visible = [...container.querySelectorAll('.list-item-wrapper')]
+    .filter(w => w !== wrapper)
+    .filter(w => { const r = w.getBoundingClientRect(); return r.bottom > headerBottom && r.top < vh; });
+  if (!visible.length) return null;
+  return {
+    visible,
+    top:    visible[0].getBoundingClientRect().top,
+    bottom: visible[visible.length - 1].getBoundingClientRect().bottom,
+  };
+}
+
+// Clamp element to viewport edges (header bottom ↔ viewport bottom + 30px overshoot for swap).
+function clampToBoundary() {
+  if (!dragState) return;
+  const { wrapper } = dragState;
+  const vh = window.innerHeight;
+  const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
+  const r = wrapper.getBoundingClientRect();
+  if (r.top < headerBottom - 30) {          // 30px overshoot so mid can pass first item's mid
+    dragState.offsetY += (headerBottom - 30) - r.top;
+    wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+  } else if (r.bottom > vh + 30) {          // 30px overshoot so mid can pass last item's mid
+    dragState.offsetY -= r.bottom - (vh + 30);
+    wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+  }
+}
+
 function startAutoScroll() {
   if (autoScrollRAF) return;
   autoScrollRAF = requestAnimationFrame(autoScrollStep);
@@ -359,38 +392,45 @@ function autoScrollStep() {
 
   const { wrapper } = dragState;
   const vh = window.innerHeight;
-
-  // Find items currently visible in the viewport (exclude the dragged one and items hidden under header)
   const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
-  const visible = [...container.querySelectorAll('.list-item-wrapper')]
-    .filter(w => w !== wrapper)
-    .filter(w => {
-      const r = w.getBoundingClientRect();
-      return r.bottom > headerBottom && r.top < vh;
-    });
 
+  // All list items except the dragged one, in DOM order
+  const all = [...container.querySelectorAll('.list-item-wrapper')].filter(w => w !== wrapper);
+
+  // Boundary markers: first/last visible items
+  const visible = all.filter(w => { const r = w.getBoundingClientRect(); return r.bottom > headerBottom && r.top < vh; });
   updateBoundaryMarkers(visible);
 
-  let speed = 0;
-  if (visible.length > 0) {
-    const dragRect   = wrapper.getBoundingClientRect();
-    const topBound   = visible[0].getBoundingClientRect().top;
-    const bottomBound = visible[visible.length - 1].getBoundingClientRect().bottom;
+  const dragRect = wrapper.getBoundingClientRect();
 
-    if (dragRect.top < topBound) {
-      // Dragged element went above the topmost visible item → scroll up
-      speed = -Math.min((topBound - dragRect.top) / 6, MAX_SCROLL);
-    } else if (dragRect.bottom > bottomBound) {
-      // Dragged element went below the bottommost visible item → scroll down
-      speed = Math.min((dragRect.bottom - bottomBound) / 6, MAX_SCROLL);
+  // DOM order including dragged item
+  const allWithDragged = [...container.querySelectorAll('.list-item-wrapper')];
+  const draggedIsFirst = allWithDragged[0] === wrapper;
+  const draggedIsLast  = allWithDragged[allWithDragged.length - 1] === wrapper;
+
+  // ── Scroll UP ──────────────────────────────────────────────────────────────
+  if (dragRect.top < headerBottom) {
+    // Stop as soon as dragged has swapped to first position — nowhere left to go
+    if (!draggedIsFirst) {
+      const speed = -Math.min((headerBottom - dragRect.top) / 5 + 2, MAX_SCROLL);
+      window.scrollBy(0, speed);
+      dragState.offsetY += speed;
+      wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+      clampToBoundary();
+      checkSwap();
     }
-  }
 
-  if (speed !== 0) {
-    window.scrollBy(0, speed);
-    dragState.offsetY += speed;
-    dragState.wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-    checkSwap();
+  // ── Scroll DOWN ────────────────────────────────────────────────────────────
+  } else if (dragRect.bottom > vh) {
+    // Stop as soon as dragged has swapped to last position — nowhere left to go
+    if (!draggedIsLast) {
+      const speed = Math.min((dragRect.bottom - vh) / 5 + 2, MAX_SCROLL);
+      window.scrollBy(0, speed);
+      dragState.offsetY += speed;
+      wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
+      clampToBoundary();
+      checkSwap();
+    }
   }
 
   autoScrollRAF = requestAnimationFrame(autoScrollStep);
