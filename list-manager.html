@@ -691,71 +691,41 @@ let pttEndpoint = (() => { try { return localStorage.getItem(PTT_ENDPOINT_KEY) |
 let mediaRecorder   = null;
 let audioChunks     = [];
 let pttStream       = null;
-let pttSettingsTimer = null; // 1.5s long-press → settings
-
 const pttBtn   = document.getElementById('ptt-btn');
 const pttLabel = document.getElementById('ptt-label');
 
 pttBtn.addEventListener('contextmenu', e => e.preventDefault());
 
-// ── Pointer down: start recording + arm settings timer ──────────────────────
+// ── Pointer down: start recording ───────────────────────────────────────────
 function pttPointerDown(e) {
   e.preventDefault();
-
-  // Long press (1.5s) → settings, aborts recording
-  pttSettingsTimer = setTimeout(() => {
-    pttSettingsTimer = null;
-    pttAbort();
-    const url = prompt('URL сервера для отправки аудио:', pttEndpoint);
-    if (url !== null) {
-      pttEndpoint = url.trim();
-      try { localStorage.setItem(PTT_ENDPOINT_KEY, pttEndpoint); } catch(e) {}
-      showToast(pttEndpoint ? 'Адрес сохранён' : 'Адрес очищен');
-    }
-  }, 1500);
-
   startPTT();
 }
 
-// ── Pointer up: cancel settings timer, send recording ───────────────────────
+// ── Pointer up: stop + send ──────────────────────────────────────────────────
 function pttPointerUp(e) {
   e.preventDefault();
-  if (pttSettingsTimer) {
-    clearTimeout(pttSettingsTimer);
-    pttSettingsTimer = null;
-    stopPTT(); // normal release → stop + send
-  }
-  // if timer already fired → settings prompt shown, pttAbort() was called — nothing to do
+  stopPTT();
 }
 
 pttBtn.addEventListener('touchstart',  pttPointerDown, { passive: false });
 pttBtn.addEventListener('touchend',    pttPointerUp,   { passive: false });
-pttBtn.addEventListener('touchcancel', e => {
-  e.preventDefault();
-  if (pttSettingsTimer) { clearTimeout(pttSettingsTimer); pttSettingsTimer = null; }
-  pttAbort();
-}, { passive: false });
+pttBtn.addEventListener('touchcancel', e => { e.preventDefault(); pttAbort(); }, { passive: false });
 pttBtn.addEventListener('mousedown',  pttPointerDown);
 pttBtn.addEventListener('mouseup',    pttPointerUp);
-pttBtn.addEventListener('mouseleave', () => {
-  if (!mediaRecorder) return;
-  if (pttSettingsTimer) { clearTimeout(pttSettingsTimer); pttSettingsTimer = null; }
-  stopPTT();
-});
+pttBtn.addEventListener('mouseleave', () => { if (mediaRecorder) stopPTT(); });
 
 // ── Start recording ──────────────────────────────────────────────────────────
 async function startPTT() {
   if (mediaRecorder) return;
   if (!pttEndpoint) {
-    showToast('Удержите 1.5с для настройки URL');
-    if (pttSettingsTimer) { clearTimeout(pttSettingsTimer); pttSettingsTimer = null; }
+    showToast('URL сервера не задан');
     return;
   }
   try {
     pttStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
     showToast('Нет доступа к микрофону');
-    if (pttSettingsTimer) { clearTimeout(pttSettingsTimer); pttSettingsTimer = null; }
     return;
   }
   audioChunks = [];
