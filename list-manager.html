@@ -26,8 +26,12 @@
     top: 0;
     z-index: 100;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
   }
 
+  .header-text { flex: 1; min-width: 0; }
   header h1 { font-size: 20px; font-weight: 700; color: #1a1a2e; }
 
   .hint {
@@ -36,6 +40,39 @@
   }
   .hint span { display: flex; align-items: center; gap: 4px; }
   .hint .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── PTT button ── */
+  #ptt-btn {
+    flex-shrink: 0;
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    border: none;
+    background: #f0f0f0;
+    color: #555;
+    font-size: 22px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+    touch-action: none;
+    position: relative;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #ptt-btn:active { transform: scale(0.92); }
+  #ptt-btn.recording {
+    background: #ff3b30;
+    color: #fff;
+    box-shadow: 0 0 0 0 rgba(255,59,48,0.5);
+    animation: ptt-pulse 1s ease-out infinite;
+  }
+  #ptt-btn.sending {
+    background: #ff9500;
+    color: #fff;
+  }
+  @keyframes ptt-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(255,59,48,0.5); }
+    70%  { box-shadow: 0 0 0 14px rgba(255,59,48,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,59,48,0); }
+  }
 
   #list-container { padding: 12px 0; position: relative; }
 
@@ -170,13 +207,16 @@
 <body>
 
 <header>
-  <h1>Мой список</h1>
-  <div class="hint">
-    <span><span class="dot" style="background:#ff3b30"></span>Влево — удалить</span>
-    <span><span class="dot" style="background:#34c759"></span>Влево↑ — вверх</span>
-    <span><span class="dot" style="background:#007aff"></span>Влево↓ — вниз</span>
-    <span><span class="dot" style="background:#af52de"></span>Удержать — перетащить</span>
+  <div class="header-text">
+    <h1>Мой список</h1>
+    <div class="hint">
+      <span><span class="dot" style="background:#ff3b30"></span>Влево — удалить</span>
+      <span><span class="dot" style="background:#34c759"></span>Влево↑ — вверх</span>
+      <span><span class="dot" style="background:#007aff"></span>Влево↓ — вниз</span>
+      <span><span class="dot" style="background:#af52de"></span>Удержать — перетащить</span>
+    </div>
   </div>
+  <button id="ptt-btn" title="Удержи для записи голоса">🎤</button>
 </header>
 
 <div id="list-container"></div>
@@ -641,6 +681,109 @@ function addItem() {
 }
 
 function closeModal() { overlay.classList.remove('open'); }
+
+// ─── Push-to-Talk ─────────────────────────────────────────────────────────────
+const PTT_ENDPOINT_KEY = 'ptt-endpoint';
+let pttEndpoint = localStorage.getItem(PTT_ENDPOINT_KEY) || '';
+
+let mediaRecorder = null;
+let audioChunks   = [];
+let pttStream     = null;
+
+const pttBtn = document.getElementById('ptt-btn');
+
+// Long-press on PTT: open endpoint settings
+let pttLongTimer = null;
+
+pttBtn.addEventListener('contextmenu', e => e.preventDefault());
+
+function pttPointerDown(e) {
+  e.preventDefault();
+  pttLongTimer = setTimeout(() => {
+    pttLongTimer = null;
+    const url = prompt('URL сервера для отправки аудио:', pttEndpoint);
+    if (url !== null) {
+      pttEndpoint = url.trim();
+      localStorage.setItem(PTT_ENDPOINT_KEY, pttEndpoint);
+      showToast(pttEndpoint ? 'Адрес сохранён' : 'Адрес очищен');
+    }
+  }, 600);
+  startPTT();
+}
+
+function pttPointerUp(e) {
+  e.preventDefault();
+  if (pttLongTimer) { clearTimeout(pttLongTimer); pttLongTimer = null; }
+  stopPTT();
+}
+
+pttBtn.addEventListener('touchstart',  pttPointerDown, { passive: false });
+pttBtn.addEventListener('touchend',    pttPointerUp,   { passive: false });
+pttBtn.addEventListener('touchcancel', pttPointerUp,   { passive: false });
+pttBtn.addEventListener('mousedown',   pttPointerDown);
+pttBtn.addEventListener('mouseup',     pttPointerUp);
+pttBtn.addEventListener('mouseleave',  e => { if (mediaRecorder) stopPTT(); });
+
+async function startPTT() {
+  if (mediaRecorder) return;
+  if (!pttEndpoint) {
+    const url = prompt('Введите URL сервера для отправки аудио:');
+    if (!url) return;
+    pttEndpoint = url.trim();
+    localStorage.setItem(PTT_ENDPOINT_KEY, pttEndpoint);
+  }
+  try {
+    pttStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    showToast('Нет доступа к микрофону');
+    return;
+  }
+  audioChunks = [];
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+      ? 'audio/ogg;codecs=opus'
+      : '';
+  mediaRecorder = new MediaRecorder(pttStream, mimeType ? { mimeType } : {});
+  mediaRecorder.addEventListener('dataavailable', e => {
+    if (e.data.size > 0) audioChunks.push(e.data);
+  });
+  mediaRecorder.addEventListener('stop', sendAudio);
+  mediaRecorder.start();
+  pttBtn.classList.add('recording');
+  if (navigator.vibrate) navigator.vibrate(20);
+}
+
+function stopPTT() {
+  if (!mediaRecorder) return;
+  mediaRecorder.stop();
+  pttStream.getTracks().forEach(t => t.stop());
+  pttStream = null;
+  mediaRecorder = null;
+  pttBtn.classList.remove('recording');
+  pttBtn.classList.add('sending');
+}
+
+async function sendAudio() {
+  if (!audioChunks.length) { pttBtn.classList.remove('sending'); return; }
+  const blob = new Blob(audioChunks, { type: audioChunks[0].type || 'audio/webm' });
+  audioChunks = [];
+  const ext  = blob.type.includes('ogg') ? 'ogg' : 'webm';
+  const form = new FormData();
+  form.append('audio', blob, `voice_${Date.now()}.${ext}`);
+  try {
+    const res = await fetch(pttEndpoint, { method: 'POST', body: form });
+    if (res.ok) {
+      showToast('Отправлено ✓');
+    } else {
+      showToast(`Ошибка сервера: ${res.status}`);
+    }
+  } catch (err) {
+    showToast('Не удалось отправить');
+  } finally {
+    pttBtn.classList.remove('sending');
+  }
+}
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 render();
