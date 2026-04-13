@@ -44,20 +44,21 @@
   /* ── PTT button ── */
   #ptt-btn {
     flex-shrink: 0;
-    width: 46px; height: 46px;
-    border-radius: 50%;
+    width: 33vw; height: 46px;
+    border-radius: 23px;
     border: none;
     background: #f0f0f0;
     color: #555;
-    font-size: 22px;
-    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    font-weight: 600;
+    font-family: inherit;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
     cursor: pointer;
-    transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+    transition: background 0.15s, transform 0.1s, box-shadow 0.15s, color 0.15s;
     touch-action: none;
-    position: relative;
     -webkit-tap-highlight-color: transparent;
   }
-  #ptt-btn:active { transform: scale(0.92); }
+  #ptt-btn:active { transform: scale(0.96); }
   #ptt-btn.recording {
     background: #ff3b30;
     color: #fff;
@@ -68,6 +69,7 @@
     background: #ff9500;
     color: #fff;
   }
+  #ptt-label { font-size: 13px; }
   @keyframes ptt-pulse {
     0%   { box-shadow: 0 0 0 0 rgba(255,59,48,0.5); }
     70%  { box-shadow: 0 0 0 14px rgba(255,59,48,0); }
@@ -216,7 +218,7 @@
       <span><span class="dot" style="background:#af52de"></span>Удержать — перетащить</span>
     </div>
   </div>
-  <button id="ptt-btn" title="Удержи для записи голоса">🎤</button>
+  <button id="ptt-btn" title="Удержи для записи голоса">🎤<span id="ptt-label">Голос</span></button>
 </header>
 
 <div id="list-container"></div>
@@ -686,74 +688,91 @@ function closeModal() { overlay.classList.remove('open'); }
 const PTT_ENDPOINT_KEY = 'ptt-endpoint';
 let pttEndpoint = (() => { try { return localStorage.getItem(PTT_ENDPOINT_KEY) || ''; } catch(e) { return ''; } })();
 
-let mediaRecorder = null;
-let audioChunks   = [];
-let pttStream     = null;
+let mediaRecorder   = null;
+let audioChunks     = [];
+let pttStream       = null;
+let pttSettingsTimer = null; // 1.5s long-press → settings
 
-const pttBtn = document.getElementById('ptt-btn');
-
-// Long-press on PTT: open endpoint settings
-let pttLongTimer = null;
+const pttBtn   = document.getElementById('ptt-btn');
+const pttLabel = document.getElementById('ptt-label');
 
 pttBtn.addEventListener('contextmenu', e => e.preventDefault());
 
+// ── Pointer down: start recording + arm settings timer ──────────────────────
 function pttPointerDown(e) {
   e.preventDefault();
-  pttLongTimer = setTimeout(() => {
-    pttLongTimer = null;
+
+  // Long press (1.5s) → settings, aborts recording
+  pttSettingsTimer = setTimeout(() => {
+    pttSettingsTimer = null;
+    pttAbort();
     const url = prompt('URL сервера для отправки аудио:', pttEndpoint);
     if (url !== null) {
       pttEndpoint = url.trim();
       try { localStorage.setItem(PTT_ENDPOINT_KEY, pttEndpoint); } catch(e) {}
       showToast(pttEndpoint ? 'Адрес сохранён' : 'Адрес очищен');
     }
-  }, 600);
+  }, 1500);
+
   startPTT();
 }
 
+// ── Pointer up: cancel settings timer, send recording ───────────────────────
 function pttPointerUp(e) {
   e.preventDefault();
-  if (pttLongTimer) { clearTimeout(pttLongTimer); pttLongTimer = null; }
-  stopPTT();
+  if (pttSettingsTimer) {
+    clearTimeout(pttSettingsTimer);
+    pttSettingsTimer = null;
+    stopPTT(); // normal release → stop + send
+  }
+  // if timer already fired → settings prompt shown, pttAbort() was called — nothing to do
 }
 
 pttBtn.addEventListener('touchstart',  pttPointerDown, { passive: false });
 pttBtn.addEventListener('touchend',    pttPointerUp,   { passive: false });
-pttBtn.addEventListener('touchcancel', pttPointerUp,   { passive: false });
-pttBtn.addEventListener('mousedown',   pttPointerDown);
-pttBtn.addEventListener('mouseup',     pttPointerUp);
-pttBtn.addEventListener('mouseleave',  e => { if (mediaRecorder) stopPTT(); });
+pttBtn.addEventListener('touchcancel', e => {
+  e.preventDefault();
+  if (pttSettingsTimer) { clearTimeout(pttSettingsTimer); pttSettingsTimer = null; }
+  pttAbort();
+}, { passive: false });
+pttBtn.addEventListener('mousedown',  pttPointerDown);
+pttBtn.addEventListener('mouseup',    pttPointerUp);
+pttBtn.addEventListener('mouseleave', () => {
+  if (!mediaRecorder) return;
+  if (pttSettingsTimer) { clearTimeout(pttSettingsTimer); pttSettingsTimer = null; }
+  stopPTT();
+});
 
+// ── Start recording ──────────────────────────────────────────────────────────
 async function startPTT() {
   if (mediaRecorder) return;
   if (!pttEndpoint) {
-    const url = prompt('Введите URL сервера для отправки аудио:');
-    if (!url) return;
-    pttEndpoint = url.trim();
-    localStorage.setItem(PTT_ENDPOINT_KEY, pttEndpoint);
+    showToast('Удержите 1.5с для настройки URL');
+    if (pttSettingsTimer) { clearTimeout(pttSettingsTimer); pttSettingsTimer = null; }
+    return;
   }
   try {
     pttStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
     showToast('Нет доступа к микрофону');
+    if (pttSettingsTimer) { clearTimeout(pttSettingsTimer); pttSettingsTimer = null; }
     return;
   }
   audioChunks = [];
   const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
     ? 'audio/webm;codecs=opus'
     : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
-      ? 'audio/ogg;codecs=opus'
-      : '';
+      ? 'audio/ogg;codecs=opus' : '';
   mediaRecorder = new MediaRecorder(pttStream, mimeType ? { mimeType } : {});
-  mediaRecorder.addEventListener('dataavailable', e => {
-    if (e.data.size > 0) audioChunks.push(e.data);
-  });
+  mediaRecorder.addEventListener('dataavailable', e => { if (e.data.size > 0) audioChunks.push(e.data); });
   mediaRecorder.addEventListener('stop', sendAudio);
   mediaRecorder.start();
   pttBtn.classList.add('recording');
+  pttLabel.textContent = 'Говорю…';
   if (navigator.vibrate) navigator.vibrate(20);
 }
 
+// ── Stop + send ──────────────────────────────────────────────────────────────
 function stopPTT() {
   if (!mediaRecorder) return;
   mediaRecorder.stop();
@@ -762,10 +781,25 @@ function stopPTT() {
   mediaRecorder = null;
   pttBtn.classList.remove('recording');
   pttBtn.classList.add('sending');
+  pttLabel.textContent = 'Отправка…';
+  if (navigator.vibrate) navigator.vibrate([10, 50, 10]);
 }
 
+// ── Abort without sending ────────────────────────────────────────────────────
+function pttAbort() {
+  if (!mediaRecorder) return;
+  audioChunks = [];
+  mediaRecorder.removeEventListener('stop', sendAudio);
+  try { mediaRecorder.stop(); } catch(e) {}
+  if (pttStream) { pttStream.getTracks().forEach(t => t.stop()); pttStream = null; }
+  mediaRecorder = null;
+  pttBtn.classList.remove('recording');
+  pttLabel.textContent = 'Голос';
+}
+
+// ── Send audio to server ─────────────────────────────────────────────────────
 async function sendAudio() {
-  if (!audioChunks.length) { pttBtn.classList.remove('sending'); return; }
+  if (!audioChunks.length) { pttReset(); return; }
   const blob = new Blob(audioChunks, { type: audioChunks[0].type || 'audio/webm' });
   audioChunks = [];
   const ext  = blob.type.includes('ogg') ? 'ogg' : 'webm';
@@ -773,16 +807,17 @@ async function sendAudio() {
   form.append('audio', blob, `voice_${Date.now()}.${ext}`);
   try {
     const res = await fetch(pttEndpoint, { method: 'POST', body: form });
-    if (res.ok) {
-      showToast('Отправлено ✓');
-    } else {
-      showToast(`Ошибка сервера: ${res.status}`);
-    }
+    showToast(res.ok ? 'Отправлено ✓' : `Ошибка сервера: ${res.status}`);
   } catch (err) {
     showToast('Не удалось отправить');
   } finally {
-    pttBtn.classList.remove('sending');
+    pttReset();
   }
+}
+
+function pttReset() {
+  pttBtn.classList.remove('sending');
+  pttLabel.textContent = 'Голос';
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
