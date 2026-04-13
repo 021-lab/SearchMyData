@@ -684,7 +684,7 @@ function closeModal() { overlay.classList.remove('open'); }
 
 // ─── Push-to-Talk ─────────────────────────────────────────────────────────────
 const PTT_ENDPOINT_KEY = 'ptt-endpoint';
-let pttEndpoint = localStorage.getItem(PTT_ENDPOINT_KEY) || '';
+let pttEndpoint = (() => { try { return localStorage.getItem(PTT_ENDPOINT_KEY) || ''; } catch(e) { return ''; } })();
 
 let mediaRecorder = null;
 let audioChunks   = [];
@@ -704,7 +704,7 @@ function pttPointerDown(e) {
     const url = prompt('URL сервера для отправки аудио:', pttEndpoint);
     if (url !== null) {
       pttEndpoint = url.trim();
-      localStorage.setItem(PTT_ENDPOINT_KEY, pttEndpoint);
+      try { localStorage.setItem(PTT_ENDPOINT_KEY, pttEndpoint); } catch(e) {}
       showToast(pttEndpoint ? 'Адрес сохранён' : 'Адрес очищен');
     }
   }, 600);
