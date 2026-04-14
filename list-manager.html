@@ -158,6 +158,46 @@
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  /* ── Diagnostic panel ── */
+  #diag-panel {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: rgba(15,15,20,0.93);
+    color: #e0e0e0;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    max-height: 38px;
+    overflow: hidden;
+    z-index: 300;
+    transition: max-height 0.25s ease;
+    backdrop-filter: blur(6px);
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  #diag-panel.expanded { max-height: 220px; }
+  #diag-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; cursor: pointer; user-select: none;
+    height: 38px;
+  }
+  #diag-title { color: #888; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+  #diag-status { font-size: 11px; }
+  #diag-toggle { color: #555; font-size: 14px; transition: transform 0.2s; }
+  #diag-panel.expanded #diag-toggle { transform: rotate(180deg); }
+  #diag-log {
+    padding: 0 14px 10px;
+    overflow-y: auto;
+    max-height: 182px;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .diag-entry {
+    display: flex; gap: 8px; align-items: baseline; line-height: 1.5;
+  }
+  .diag-time { color: #555; flex-shrink: 0; font-size: 10px; }
+  .diag-msg  { flex: 1; word-break: break-all; }
+  .diag-info    { color: #8bb4e8; }
+  .diag-success { color: #4cd964; }
+  .diag-error   { color: #ff6b6b; }
+  .diag-warn    { color: #ffcc00; }
+
   /* ── Empty state ── */
   .empty-state { text-align: center; padding: 60px 20px; color: #bbb; }
   .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
@@ -224,6 +264,15 @@
 <div id="list-container"></div>
 <div class="toast" id="toast"></div>
 <button class="add-btn" id="add-btn">+</button>
+
+<div id="diag-panel">
+  <div id="diag-header">
+    <span id="diag-title">Диагностика PTT</span>
+    <span id="diag-status" class="diag-info">— ожидание —</span>
+    <span id="diag-toggle">▲</span>
+  </div>
+  <div id="diag-log"></div>
+</div>
 
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
@@ -684,6 +733,29 @@ function addItem() {
 
 function closeModal() { overlay.classList.remove('open'); }
 
+// ─── Diagnostic panel ─────────────────────────────────────────────────────────
+const diagPanel  = document.getElementById('diag-panel');
+const diagLog    = document.getElementById('diag-log');
+const diagStatus = document.getElementById('diag-status');
+
+document.getElementById('diag-header').addEventListener('click', () => {
+  diagPanel.classList.toggle('expanded');
+});
+
+function diagLog_(msg, type = 'info') {
+  const now = new Date();
+  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const entry = document.createElement('div');
+  entry.className = 'diag-entry';
+  entry.innerHTML = `<span class="diag-time">${time}</span><span class="diag-msg diag-${type}">${msg}</span>`;
+  diagLog.appendChild(entry);
+  diagLog.scrollTop = diagLog.scrollHeight;
+  diagStatus.textContent = msg;
+  diagStatus.className = `diag-${type}`;
+  // keep last 50 entries
+  while (diagLog.children.length > 50) diagLog.removeChild(diagLog.firstChild);
+}
+
 // ─── Push-to-Talk ─────────────────────────────────────────────────────────────
 const PTT_ENDPOINT_KEY = 'ptt-endpoint';
 let pttEndpoint = (() => { try { return localStorage.getItem(PTT_ENDPOINT_KEY) || ''; } catch(e) { return ''; } })();
@@ -719,12 +791,16 @@ pttBtn.addEventListener('mouseleave', () => { if (mediaRecorder) stopPTT(); });
 async function startPTT() {
   if (mediaRecorder) return;
   if (!pttEndpoint) {
+    diagLog_('URL сервера не задан', 'error');
     showToast('URL сервера не задан');
     return;
   }
+  diagLog_(`Endpoint: ${pttEndpoint}`, 'info');
+  diagLog_('Запрос доступа к микрофону…', 'info');
   try {
     pttStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
+    diagLog_(`Микрофон: ${err.name} — ${err.message}`, 'error');
     showToast('Нет доступа к микрофону');
     return;
   }
@@ -733,10 +809,12 @@ async function startPTT() {
     ? 'audio/webm;codecs=opus'
     : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
       ? 'audio/ogg;codecs=opus' : '';
+  diagLog_(`MediaRecorder: ${mimeType || 'default'}`, 'info');
   mediaRecorder = new MediaRecorder(pttStream, mimeType ? { mimeType } : {});
   mediaRecorder.addEventListener('dataavailable', e => { if (e.data.size > 0) audioChunks.push(e.data); });
   mediaRecorder.addEventListener('stop', sendAudio);
   mediaRecorder.start();
+  diagLog_('● Запись…', 'warn');
   pttBtn.classList.add('recording');
   pttLabel.textContent = 'Говорю…';
   if (navigator.vibrate) navigator.vibrate(20);
@@ -749,6 +827,7 @@ function stopPTT() {
   pttStream.getTracks().forEach(t => t.stop());
   pttStream = null;
   mediaRecorder = null;
+  diagLog_('Запись остановлена, отправляю…', 'info');
   pttBtn.classList.remove('recording');
   pttBtn.classList.add('sending');
   pttLabel.textContent = 'Отправка…';
@@ -763,22 +842,37 @@ function pttAbort() {
   try { mediaRecorder.stop(); } catch(e) {}
   if (pttStream) { pttStream.getTracks().forEach(t => t.stop()); pttStream = null; }
   mediaRecorder = null;
+  diagLog_('Запись отменена', 'warn');
   pttBtn.classList.remove('recording');
   pttLabel.textContent = 'Голос';
 }
 
 // ── Send audio to server ─────────────────────────────────────────────────────
 async function sendAudio() {
-  if (!audioChunks.length) { pttReset(); return; }
+  if (!audioChunks.length) {
+    diagLog_('Нет аудиоданных', 'error');
+    pttReset(); return;
+  }
   const blob = new Blob(audioChunks, { type: audioChunks[0].type || 'audio/webm' });
   audioChunks = [];
   const ext  = blob.type.includes('ogg') ? 'ogg' : 'webm';
+  const filename = `voice_${Date.now()}.${ext}`;
+  diagLog_(`Blob: ${blob.type}, ${(blob.size/1024).toFixed(1)} KB, файл: ${filename}`, 'info');
   const form = new FormData();
-  form.append('audio', blob, `voice_${Date.now()}.${ext}`);
+  form.append('audio', blob, filename);
+  diagLog_(`POST → ${pttEndpoint}`, 'info');
   try {
     const res = await fetch(pttEndpoint, { method: 'POST', body: form });
-    showToast(res.ok ? 'Отправлено ✓' : `Ошибка сервера: ${res.status}`);
+    const text = await res.text().catch(() => '');
+    if (res.ok) {
+      diagLog_(`✓ ${res.status} ${res.statusText} | ${text.slice(0,80)}`, 'success');
+      showToast('Отправлено ✓');
+    } else {
+      diagLog_(`✗ ${res.status} ${res.statusText} | ${text.slice(0,80)}`, 'error');
+      showToast(`Ошибка сервера: ${res.status}`);
+    }
   } catch (err) {
+    diagLog_(`Fetch error: ${err.message}`, 'error');
     showToast('Не удалось отправить');
   } finally {
     pttReset();
