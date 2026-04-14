@@ -182,22 +182,7 @@
   #diag-status { font-size: 11px; }
   #diag-toggle { color: #555; font-size: 14px; transition: transform 0.2s; }
   #diag-panel.expanded #diag-toggle { transform: rotate(180deg); }
-  #diag-url-row {
-    display: flex; align-items: center; gap: 6px;
-    padding: 0 14px 8px;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-    margin-bottom: 4px;
-  }
-  #diag-url-label { color: #555; font-size: 10px; flex-shrink: 0; }
-  #diag-url-input {
-    flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 6px; color: #ccc; font-size: 11px; font-family: inherit;
-    padding: 5px 8px; outline: none; min-width: 0;
-    user-select: text; -webkit-user-select: text;
-  }
-  #diag-url-input:focus { border-color: rgba(100,160,255,0.5); color: #fff; }
-  #diag-url-input.invalid { border-color: rgba(255,80,80,0.6); }
-  .diag-btn {
+.diag-btn {
     flex-shrink: 0; background: rgba(255,255,255,0.08); border: none;
     border-radius: 6px; color: #aaa; font-size: 10px; padding: 5px 8px;
     cursor: pointer; font-family: inherit; white-space: nowrap;
@@ -296,11 +281,6 @@
     <span id="diag-title">Диагностика PTT</span>
     <span id="diag-status" class="diag-info">— ожидание —</span>
     <span id="diag-toggle">▲</span>
-  </div>
-  <div id="diag-url-row">
-    <span id="diag-url-label">URL</span>
-    <input id="diag-url-input" type="text" inputmode="url" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="https://...">
-    <button class="diag-btn" id="diag-url-reset">↺</button>
   </div>
   <div id="diag-log-header">
     <span id="diag-log-label">Лог</span>
@@ -792,44 +772,7 @@ function diagLog_(msg, type = 'info') {
 }
 
 // ─── Push-to-Talk ─────────────────────────────────────────────────────────────
-const PTT_ENDPOINT_KEY = 'ptt-endpoint';
-const PTT_ENDPOINT_DEFAULT = 'https://minds.myapp.fund/voice/';
-let pttEndpoint = (() => { try { return localStorage.getItem(PTT_ENDPOINT_KEY) || PTT_ENDPOINT_DEFAULT; } catch(e) { return PTT_ENDPOINT_DEFAULT; } })();
-
-const diagUrlInput = document.getElementById('diag-url-input');
-diagUrlInput.value = pttEndpoint;
-
-// Stop panel collapse when tapping inside URL input
-diagUrlInput.addEventListener('touchstart', e => e.stopPropagation());
-diagUrlInput.addEventListener('mousedown',  e => e.stopPropagation());
-
-function isValidUrl(s) { return /^https?:\/\/.+/.test(s.trim()); }
-
-function saveEndpoint(val) {
-  const url = val.trim();
-  if (!isValidUrl(url)) {
-    diagUrlInput.classList.add('invalid');
-    diagLog_(`Некорректный URL: "${url}" — сброс к дефолту`, 'error');
-    pttEndpoint = PTT_ENDPOINT_DEFAULT;
-    diagUrlInput.value = PTT_ENDPOINT_DEFAULT;
-    diagUrlInput.classList.remove('invalid');
-    try { localStorage.setItem(PTT_ENDPOINT_KEY, PTT_ENDPOINT_DEFAULT); } catch(e) {}
-    return;
-  }
-  diagUrlInput.classList.remove('invalid');
-  pttEndpoint = url;
-  diagUrlInput.value = pttEndpoint;
-  try { localStorage.setItem(PTT_ENDPOINT_KEY, pttEndpoint); } catch(e) {}
-  diagLog_(`URL сохранён: ${pttEndpoint}`, 'success');
-}
-
-diagUrlInput.addEventListener('blur',  e => saveEndpoint(e.target.value));
-diagUrlInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); diagUrlInput.blur(); } });
-
-document.getElementById('diag-url-reset').addEventListener('click', () => {
-  diagUrlInput.value = PTT_ENDPOINT_DEFAULT;
-  saveEndpoint(PTT_ENDPOINT_DEFAULT);
-});
+const pttEndpoint = 'https://minds.myapp.fund/voice/';
 
 document.getElementById('diag-copy-btn').addEventListener('click', () => {
   const entries = [...document.querySelectorAll('.diag-entry')];
