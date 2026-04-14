@@ -183,7 +183,7 @@
   #diag-toggle { color: #555; font-size: 14px; transition: transform 0.2s; }
   #diag-panel.expanded #diag-toggle { transform: rotate(180deg); }
   #diag-url-row {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 6px;
     padding: 0 14px 8px;
     border-bottom: 1px solid rgba(255,255,255,0.07);
     margin-bottom: 4px;
@@ -196,6 +196,18 @@
     user-select: text; -webkit-user-select: text;
   }
   #diag-url-input:focus { border-color: rgba(100,160,255,0.5); color: #fff; }
+  #diag-url-input.invalid { border-color: rgba(255,80,80,0.6); }
+  .diag-btn {
+    flex-shrink: 0; background: rgba(255,255,255,0.08); border: none;
+    border-radius: 6px; color: #aaa; font-size: 10px; padding: 5px 8px;
+    cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .diag-btn:active { background: rgba(255,255,255,0.15); }
+  #diag-log-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px 4px;
+  }
+  #diag-log-label { color: #444; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
   #diag-log {
     padding: 0 14px 10px;
     overflow-y: auto;
@@ -287,7 +299,12 @@
   </div>
   <div id="diag-url-row">
     <span id="diag-url-label">URL</span>
-    <input id="diag-url-input" type="url" spellcheck="false" autocomplete="off" placeholder="https://your-server/voice/">
+    <input id="diag-url-input" type="text" inputmode="url" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="https://...">
+    <button class="diag-btn" id="diag-url-reset">↺</button>
+  </div>
+  <div id="diag-log-header">
+    <span id="diag-log-label">Лог</span>
+    <button class="diag-btn" id="diag-copy-btn">Копировать лог</button>
   </div>
   <div id="diag-log"></div>
 </div>
@@ -786,9 +803,21 @@ diagUrlInput.value = pttEndpoint;
 diagUrlInput.addEventListener('touchstart', e => e.stopPropagation());
 diagUrlInput.addEventListener('mousedown',  e => e.stopPropagation());
 
+function isValidUrl(s) { return /^https?:\/\/.+/.test(s.trim()); }
+
 function saveEndpoint(val) {
   const url = val.trim();
-  pttEndpoint = url || PTT_ENDPOINT_DEFAULT;
+  if (!isValidUrl(url)) {
+    diagUrlInput.classList.add('invalid');
+    diagLog_(`Некорректный URL: "${url}" — сброс к дефолту`, 'error');
+    pttEndpoint = PTT_ENDPOINT_DEFAULT;
+    diagUrlInput.value = PTT_ENDPOINT_DEFAULT;
+    diagUrlInput.classList.remove('invalid');
+    try { localStorage.setItem(PTT_ENDPOINT_KEY, PTT_ENDPOINT_DEFAULT); } catch(e) {}
+    return;
+  }
+  diagUrlInput.classList.remove('invalid');
+  pttEndpoint = url;
   diagUrlInput.value = pttEndpoint;
   try { localStorage.setItem(PTT_ENDPOINT_KEY, pttEndpoint); } catch(e) {}
   diagLog_(`URL сохранён: ${pttEndpoint}`, 'success');
@@ -796,6 +825,23 @@ function saveEndpoint(val) {
 
 diagUrlInput.addEventListener('blur',  e => saveEndpoint(e.target.value));
 diagUrlInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); diagUrlInput.blur(); } });
+
+document.getElementById('diag-url-reset').addEventListener('click', () => {
+  diagUrlInput.value = PTT_ENDPOINT_DEFAULT;
+  saveEndpoint(PTT_ENDPOINT_DEFAULT);
+});
+
+document.getElementById('diag-copy-btn').addEventListener('click', () => {
+  const entries = [...document.querySelectorAll('.diag-entry')];
+  const text = entries.map(e => {
+    const t = e.querySelector('.diag-time')?.textContent || '';
+    const m = e.querySelector('.diag-msg')?.textContent || '';
+    return `${t} ${m}`;
+  }).join('\n');
+  navigator.clipboard.writeText(text)
+    .then(() => showToast('Лог скопирован'))
+    .catch(() => showToast('Не удалось скопировать'));
+});
 
 let mediaRecorder   = null;
 let audioChunks     = [];
