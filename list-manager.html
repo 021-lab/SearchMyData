@@ -594,20 +594,14 @@ function finalizeDrag() {
   dragState = null;
 
   // If no right shift: correct position when dropped between items of different levels.
-  // Loop handles chains: after moving before A, C might again be between Y and A.
   if (!rightShifted) {
-    let moved = true;
-    while (moved) {
-      moved = false;
-      const all = [...container.querySelectorAll('.list-item-wrapper')];
-      const idx = all.indexOf(wrapper);
-      if (idx > 0 && idx < all.length - 1) {
-        const aboveItem = items.find(i => i.id === +all[idx - 1].dataset.id);
-        const belowItem = items.find(i => i.id === +all[idx + 1].dataset.id);
-        if ((belowItem?.level || 0) > (aboveItem?.level || 0)) {
-          container.insertBefore(wrapper, all[idx - 1]);
-          moved = true;
-        }
+    const all = [...container.querySelectorAll('.list-item-wrapper')];
+    const idx = all.indexOf(wrapper);
+    if (idx > 0 && idx < all.length - 1) {
+      const aboveItem = items.find(i => i.id === +all[idx - 1].dataset.id);
+      const belowItem = items.find(i => i.id === +all[idx + 1].dataset.id);
+      if ((belowItem?.level || 0) > (aboveItem?.level || 0)) {
+        container.insertBefore(wrapper, all[idx - 1]);
       }
     }
   }
