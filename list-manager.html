@@ -421,8 +421,28 @@ function startDrag(wrapper, clientY, clientX) {
   listItem.classList.remove('pressing');
   listItem.style.transition = 'none';
   wrapper.classList.add('is-dragging');
-  dragState = { wrapper, lastClientY: clientY, offsetY: 0, nestBaseX: clientX };
+
+  // Collect group: all items with higher level immediately following parent
+  const allWrappers = [...container.querySelectorAll('.list-item-wrapper')];
+  const startIdx = allWrappers.indexOf(wrapper);
+  const parentItem = items.find(i => i.id === +wrapper.dataset.id);
+  const baseLevel = parentItem?.level || 0;
+  const children = [];
+  for (let i = startIdx + 1; i < allWrappers.length; i++) {
+    const childItem = items.find(it => it.id === +allWrappers[i].dataset.id);
+    if ((childItem?.level || 0) <= baseLevel) break;
+    children.push(allWrappers[i]);
+  }
+
+  dragState = { wrapper, lastClientY: clientY, offsetY: 0, nestBaseX: clientX, children };
   startAutoScroll();
+}
+
+// Apply parent's offsetY to all group children so they visually follow
+function syncChildTransforms() {
+  if (!dragState?.children?.length) return;
+  const t = `translateY(${dragState.offsetY}px)`;
+  for (const child of dragState.children) child.style.transform = t;
 }
 
 const NEST_THRESHOLD = 36;
@@ -434,6 +454,7 @@ function updateDrag(clientY, clientX) {
   wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
   clampToBoundary();
   checkSwap();
+  syncChildTransforms();
   if (clientX !== undefined) {
     detectRightShift(clientX);
     updateDraggedLevel();
@@ -468,24 +489,29 @@ function updateDraggedLevel() {
 }
 
 function checkSwap() {
-  const { wrapper } = dragState;
+  const { wrapper, children } = dragState;
   const all = [...container.querySelectorAll('.list-item-wrapper')];
   const idx = all.indexOf(wrapper);
   const dragRect = wrapper.getBoundingClientRect();
   const mid = dragRect.top + dragRect.height / 2;
 
+  // ── Swap UP: move group before prev ──────────────────────────────────────
   if (idx > 0) {
     const prev = all[idx - 1];
     const pr = prev.getBoundingClientRect();
     if (mid < pr.top + pr.height / 2) {
       container.insertBefore(wrapper, prev);
+      for (const child of children) container.insertBefore(child, prev);
       dragState.offsetY += pr.height + 1;
       wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
       return;
     }
   }
-  if (idx < all.length - 1) {
-    const next = all[idx + 1];
+
+  // ── Swap DOWN: item after group jumps above parent ────────────────────────
+  const groupEnd = idx + children.length;
+  if (groupEnd < all.length - 1) {
+    const next = all[groupEnd + 1];
     const nr = next.getBoundingClientRect();
     if (mid > nr.top + nr.height / 2) {
       container.insertBefore(next, wrapper);
@@ -543,8 +569,11 @@ function autoScrollStep() {
   const vh = window.innerHeight;
   const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
 
-  // All list items except the dragged one, in DOM order
-  const all = [...container.querySelectorAll('.list-item-wrapper')].filter(w => w !== wrapper);
+  const { children } = dragState;
+
+  // All list items except the dragged group, in DOM order
+  const all = [...container.querySelectorAll('.list-item-wrapper')]
+    .filter(w => w !== wrapper && !children.includes(w));
 
   // Boundary markers: first/last visible items
   const visible = all.filter(w => { const r = w.getBoundingClientRect(); return r.bottom > headerBottom && r.top < vh; });
@@ -552,14 +581,14 @@ function autoScrollStep() {
 
   const dragRect = wrapper.getBoundingClientRect();
 
-  // DOM order including dragged item
+  // DOM order including dragged group
   const allWithDragged = [...container.querySelectorAll('.list-item-wrapper')];
-  const draggedIsFirst = allWithDragged[0] === wrapper;
-  const draggedIsLast  = allWithDragged[allWithDragged.length - 1] === wrapper;
+  const parentIdx   = allWithDragged.indexOf(wrapper);
+  const draggedIsFirst = parentIdx === 0;
+  const draggedIsLast  = parentIdx + children.length === allWithDragged.length - 1;
 
   // ── Scroll UP ──────────────────────────────────────────────────────────────
   if (dragRect.top < headerBottom) {
-    // Stop as soon as dragged has swapped to first position — nowhere left to go
     if (!draggedIsFirst) {
       const speed = -Math.min((headerBottom - dragRect.top) / 5 + 2, MAX_SCROLL);
       window.scrollBy(0, speed);
@@ -567,12 +596,12 @@ function autoScrollStep() {
       wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
       clampToBoundary();
       checkSwap();
+      syncChildTransforms();
       updateDraggedLevel();
     }
 
   // ── Scroll DOWN ────────────────────────────────────────────────────────────
   } else if (dragRect.bottom > vh) {
-    // Stop as soon as dragged has swapped to last position — nowhere left to go
     if (!draggedIsLast) {
       const speed = Math.min((dragRect.bottom - vh) / 5 + 2, MAX_SCROLL);
       window.scrollBy(0, speed);
@@ -580,6 +609,7 @@ function autoScrollStep() {
       wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
       clampToBoundary();
       checkSwap();
+      syncChildTransforms();
       updateDraggedLevel();
     }
   }
@@ -590,18 +620,21 @@ function autoScrollStep() {
 function finalizeDrag() {
   stopAutoScroll();
   clearBoundaryMarkers();
-  const { wrapper, pendingLevel, rightShifted } = dragState;
+  const { wrapper, pendingLevel, rightShifted, children } = dragState;
   dragState = null;
 
-  // If no right shift: correct position when dropped between items of different levels.
+  // If no right shift: correct position when group is between items of different levels.
   if (!rightShifted) {
     const all = [...container.querySelectorAll('.list-item-wrapper')];
     const idx = all.indexOf(wrapper);
-    if (idx > 0 && idx < all.length - 1) {
+    const groupEnd = idx + children.length;
+    if (idx > 0 && groupEnd < all.length - 1) {
       const aboveItem = items.find(i => i.id === +all[idx - 1].dataset.id);
-      const belowItem = items.find(i => i.id === +all[idx + 1].dataset.id);
+      const belowItem = items.find(i => i.id === +all[groupEnd + 1].dataset.id);
       if ((belowItem?.level || 0) > (aboveItem?.level || 0)) {
-        container.insertBefore(wrapper, all[idx - 1]);
+        const aboveWrapper = all[idx - 1];
+        container.insertBefore(wrapper, aboveWrapper);
+        for (const child of children) container.insertBefore(child, aboveWrapper);
       }
     }
   }
@@ -617,10 +650,15 @@ function finalizeDrag() {
   listItem.style.transition = '';
   wrapper.style.transition = 'transform 0.22s cubic-bezier(.4,0,.2,1)';
   wrapper.style.transform = '';
+  for (const child of children) {
+    child.style.transition = 'transform 0.22s cubic-bezier(.4,0,.2,1)';
+    child.style.transform = '';
+  }
 
   setTimeout(() => {
     wrapper.style.transition = '';
     wrapper.classList.remove('is-dragging');
+    for (const child of children) child.style.transition = '';
     const wrappers = [...container.querySelectorAll('.list-item-wrapper')];
     items = wrappers.map(w => items.find(it => it.id === +w.dataset.id)).filter(Boolean);
     wrappers.forEach((w, i) => {
