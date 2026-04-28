@@ -20,26 +20,35 @@
 
   header {
     background: #fff;
-    padding: 16px 20px 12px;
+    padding: 12px 16px;
     border-bottom: 1px solid #e0e0e0;
     position: sticky;
     top: 0;
     z-index: 100;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     display: flex;
-    align-items: flex-start;
-    gap: 12px;
+    align-items: center;
+    gap: 10px;
   }
 
-  .header-text { flex: 1; min-width: 0; }
-  header h1 { font-size: 20px; font-weight: 700; color: #1a1a2e; }
+  header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
 
-  .hint {
-    font-size: 11px; color: #999; margin-top: 6px;
-    display: flex; gap: 10px; flex-wrap: wrap;
+  /* ── Undo button ── */
+  #undo-btn {
+    flex-shrink: 0;
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: #f0f0f0;
+    color: #555;
+    font-size: 20px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+    -webkit-tap-highlight-color: transparent;
   }
-  .hint span { display: flex; align-items: center; gap: 4px; }
-  .hint .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  #undo-btn:active { background: #e0e0e0; }
+  #undo-btn:disabled { opacity: 0.3; pointer-events: none; }
 
   /* ── PTT button ── */
   #ptt-btn {
@@ -261,15 +270,8 @@
 <body>
 
 <header>
-  <div class="header-text">
-    <h1>Мой список</h1>
-    <div class="hint">
-      <span><span class="dot" style="background:#ff3b30"></span>Влево — удалить</span>
-      <span><span class="dot" style="background:#34c759"></span>Влево↑ — вверх</span>
-      <span><span class="dot" style="background:#007aff"></span>Влево↓ — вниз</span>
-      <span><span class="dot" style="background:#af52de"></span>Удержать — перетащить</span>
-    </div>
-  </div>
+  <button id="undo-btn" disabled title="Отменить перетаскивание">↩</button>
+  <h1>Мой список</h1>
   <button id="ptt-btn" title="Удержи для записи голоса">🎤<span id="ptt-label">Голос</span></button>
 </header>
 
@@ -381,6 +383,24 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// ─── Undo ────────────────────────────────────────────────────────────────────
+let undoSnapshot = null;
+const undoBtn = document.getElementById('undo-btn');
+
+undoBtn.addEventListener('click', () => {
+  if (!undoSnapshot) return;
+  items = undoSnapshot;
+  undoSnapshot = null;
+  render();
+  undoBtn.disabled = true;
+  showToast('Отменено');
+});
+
+function saveUndoSnapshot() {
+  undoSnapshot = items.map(i => ({ ...i }));
+  undoBtn.disabled = false;
+}
+
 // ─── Drag (long press) ───────────────────────────────────────────────────────
 let dragState = null;
 let autoScrollRAF = null;
@@ -416,6 +436,7 @@ document.addEventListener('touchcancel', () => {
 }, { passive: true });
 
 function startDrag(wrapper, clientY, clientX) {
+  saveUndoSnapshot();
   if (navigator.vibrate) navigator.vibrate(30);
   const listItem = wrapper.querySelector('.list-item');
   listItem.classList.remove('pressing');
