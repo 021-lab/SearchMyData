@@ -425,7 +425,7 @@ function startDrag(wrapper, clientY, clientX) {
   startAutoScroll();
 }
 
-const NEST_THRESHOLD = 36; // px horizontal shift to trigger nest/un-nest
+const NEST_THRESHOLD = 36;
 
 function updateDrag(clientY, clientX) {
   const { wrapper } = dragState;
@@ -434,44 +434,37 @@ function updateDrag(clientY, clientX) {
   wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
   clampToBoundary();
   checkSwap();
-  if (clientX !== undefined) checkNesting(wrapper, clientX);
+  if (clientX !== undefined) {
+    detectRightShift(clientX);
+    updateDraggedLevel();
+  }
 }
 
-function checkNesting(wrapper, clientX) {
-  const dx = clientX - (dragState.nestBaseX ?? clientX);
-  if (Math.abs(dx) < NEST_THRESHOLD) return;
-
-  const itemId = +wrapper.dataset.id;
-  const item = items.find(i => i.id === itemId);
-  if (!item) return;
-
-  const curLevel = item.level || 0;
-
-  if (dx > 0) {
-    // Shift right → nest under item above
-    const all = [...container.querySelectorAll('.list-item-wrapper')];
-    const idx = all.indexOf(wrapper);
-    if (idx > 0) {
-      const aboveId = +all[idx - 1].dataset.id;
-      const aboveItem = items.find(i => i.id === aboveId);
-      const newLevel = (aboveItem ? (aboveItem.level || 0) : 0) + 1;
-      if (newLevel !== curLevel) {
-        item.level = newLevel;
-        applyItemIndent(wrapper, newLevel);
-        if (navigator.vibrate) navigator.vibrate(10);
-      }
-    }
-  } else {
-    // Shift left → un-nest
-    const newLevel = Math.max(0, curLevel - 1);
-    if (newLevel !== curLevel) {
-      item.level = newLevel;
-      applyItemIndent(wrapper, newLevel);
-      if (navigator.vibrate) navigator.vibrate(10);
-    }
+// Detect a right shift gesture during drag — sets rightShifted flag once
+function detectRightShift(clientX) {
+  if (dragState.nestBaseX === undefined) { dragState.nestBaseX = clientX; return; }
+  const dx = clientX - dragState.nestBaseX;
+  if (dx > NEST_THRESHOLD && !dragState.rightShifted) {
+    dragState.rightShifted = true;
+    dragState.nestBaseX = clientX;
+    if (navigator.vibrate) navigator.vibrate(10);
   }
+}
 
-  dragState.nestBaseX = clientX;
+// Recompute and apply visual level of dragged item based on item above + shift flag
+function updateDraggedLevel() {
+  const { wrapper } = dragState;
+  const all = [...container.querySelectorAll('.list-item-wrapper')];
+  const idx = all.indexOf(wrapper);
+  let newLevel = 0;
+  if (idx > 0) {
+    const aboveId  = +all[idx - 1].dataset.id;
+    const aboveItem = items.find(i => i.id === aboveId);
+    const aboveLevel = aboveItem ? (aboveItem.level || 0) : 0;
+    newLevel = dragState.rightShifted ? aboveLevel + 1 : aboveLevel;
+  }
+  dragState.pendingLevel = newLevel;
+  applyItemIndent(wrapper, newLevel);
 }
 
 function checkSwap() {
@@ -574,6 +567,7 @@ function autoScrollStep() {
       wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
       clampToBoundary();
       checkSwap();
+      updateDraggedLevel();
     }
 
   // ── Scroll DOWN ────────────────────────────────────────────────────────────
@@ -586,6 +580,7 @@ function autoScrollStep() {
       wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
       clampToBoundary();
       checkSwap();
+      updateDraggedLevel();
     }
   }
 
@@ -595,8 +590,15 @@ function autoScrollStep() {
 function finalizeDrag() {
   stopAutoScroll();
   clearBoundaryMarkers();
-  const { wrapper } = dragState;
+  const { wrapper, pendingLevel } = dragState;
   dragState = null;
+
+  // Commit the pending nesting level to the item data
+  if (pendingLevel !== undefined) {
+    const itemId = +wrapper.dataset.id;
+    const item = items.find(i => i.id === itemId);
+    if (item) item.level = pendingLevel;
+  }
 
   const listItem = wrapper.querySelector('.list-item');
   listItem.style.transition = '';
