@@ -219,6 +219,16 @@
   .diag-error   { color: #ff6b6b; }
   .diag-warn    { color: #ffcc00; }
 
+  /* ── Collapse chevron ── */
+  .chevron {
+    display: inline-block;
+    font-size: 10px;
+    color: #bbb;
+    margin-right: 5px;
+    vertical-align: middle;
+    transition: transform 0.15s;
+  }
+
   /* ── Empty state ── */
   .empty-state { text-align: center; padding: 60px 20px; color: #bbb; }
   .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
@@ -354,10 +364,18 @@ function render() {
     container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>Список пуст. Нажмите + чтобы добавить.</p></div>`;
     return;
   }
+  let collapsedAt = Infinity;
   items.forEach((item, idx) => {
+    const level = item.level || 0;
+    const hidden = level > collapsedAt;
+    if (!hidden) collapsedAt = item.collapsed ? level : Infinity;
+
+    const hasChildren = idx < items.length - 1 && (items[idx + 1].level || 0) > level;
+
     const wrapper = document.createElement('div');
     wrapper.className = 'list-item-wrapper';
     wrapper.dataset.id = item.id;
+    if (hidden) wrapper.style.display = 'none';
 
     const actionBg = document.createElement('div');
     actionBg.className = 'action-bg del';
@@ -365,8 +383,9 @@ function render() {
 
     const el = document.createElement('div');
     el.className = 'list-item';
+    const chevron = hasChildren ? `<span class="chevron">${item.collapsed ? '▶' : '▼'}</span>` : '';
     el.innerHTML = `
-      <div class="item-line1">${escHtml(item.line1)}</div>
+      <div class="item-line1">${chevron}${escHtml(item.line1)}</div>
       ${item.line2 ? `<div class="item-line2">${escHtml(item.line2)}</div>` : ''}
       <div class="item-index">${idx + 1}</div>
     `;
@@ -374,7 +393,7 @@ function render() {
     wrapper.appendChild(actionBg);
     wrapper.appendChild(el);
     container.appendChild(wrapper);
-    applyItemIndent(wrapper, item.level || 0);
+    applyItemIndent(wrapper, level);
     bindGesture(el, actionBg, item.id, wrapper);
   });
 }
@@ -399,6 +418,16 @@ undoBtn.addEventListener('click', () => {
 function saveUndoSnapshot() {
   undoSnapshot = items.map(i => ({ ...i }));
   undoBtn.disabled = false;
+}
+
+function toggleCollapse(itemId) {
+  const idx = items.findIndex(i => i.id === itemId);
+  if (idx < 0) return;
+  const item = items[idx];
+  const hasChildren = idx < items.length - 1 && (items[idx + 1].level || 0) > (item.level || 0);
+  if (!hasChildren) return;
+  item.collapsed = !item.collapsed;
+  render();
 }
 
 // ─── Drag (long press) ───────────────────────────────────────────────────────
@@ -695,16 +724,9 @@ function finalizeDrag() {
   setTimeout(() => {
     wrapper.style.transition = '';
     wrapper.classList.remove('is-dragging');
-    for (const child of children) {
-      child.style.transition = '';
-      child.style.display = '';  // expand children after snap
-    }
     const wrappers = [...container.querySelectorAll('.list-item-wrapper')];
     items = wrappers.map(w => items.find(it => it.id === +w.dataset.id)).filter(Boolean);
-    wrappers.forEach((w, i) => {
-      const idx = w.querySelector('.item-index');
-      if (idx) idx.textContent = i + 1;
-    });
+    render();
   }, 220);
 }
 
@@ -812,6 +834,8 @@ function bindGesture(el, actionBg, itemId, wrapper) {
       if (dy < -SWIPE_V)      doMoveUp(itemId);
       else if (dy > SWIPE_V)  doMoveDown(itemId);
       else                     doDelete(itemId, wrapper);
+    } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+      toggleCollapse(itemId);
     }
   };
 
