@@ -131,6 +131,11 @@
     touch-action: none;
   }
 
+  /* ── Nested items ── */
+  .list-item.nested {
+    border-left: 3px solid;
+  }
+
   .item-line1 {
     font-size: 16px; font-weight: 600; color: #1a1a2e;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -337,6 +342,21 @@ let nextId = 26;
 // ─── Render ──────────────────────────────────────────────────────────────────
 const container = document.getElementById('list-container');
 
+const NEST_COLORS = ['#007aff','#34c759','#ff9500','#af52de','#ff2d55','#5ac8fa'];
+
+function applyItemIndent(wrapper, level) {
+  const el = wrapper.querySelector('.list-item');
+  const indent = level * 22;
+  el.style.paddingLeft = (16 + indent) + 'px';
+  if (level > 0) {
+    el.classList.add('nested');
+    el.style.borderLeftColor = NEST_COLORS[(level - 1) % NEST_COLORS.length];
+  } else {
+    el.classList.remove('nested');
+    el.style.borderLeftColor = '';
+  }
+}
+
 function render() {
   container.innerHTML = '';
   if (items.length === 0) {
@@ -363,6 +383,7 @@ function render() {
     wrapper.appendChild(actionBg);
     wrapper.appendChild(el);
     container.appendChild(wrapper);
+    applyItemIndent(wrapper, item.level || 0);
     bindGesture(el, actionBg, item.id, wrapper);
   });
 }
@@ -394,7 +415,7 @@ function clearBoundaryMarkers() {
 document.addEventListener('touchmove', e => {
   if (!dragState) return;
   e.preventDefault();
-  updateDrag(e.touches[0].clientY);
+  updateDrag(e.touches[0].clientY, e.touches[0].clientX);
 }, { passive: false });
 
 document.addEventListener('touchend', () => {
@@ -405,23 +426,63 @@ document.addEventListener('touchcancel', () => {
   if (dragState) finalizeDrag();
 }, { passive: true });
 
-function startDrag(wrapper, clientY) {
+function startDrag(wrapper, clientY, clientX) {
   if (navigator.vibrate) navigator.vibrate(30);
   const listItem = wrapper.querySelector('.list-item');
   listItem.classList.remove('pressing');
   listItem.style.transition = 'none';
   wrapper.classList.add('is-dragging');
-  dragState = { wrapper, lastClientY: clientY, offsetY: 0 };
+  dragState = { wrapper, lastClientY: clientY, offsetY: 0, nestBaseX: clientX };
   startAutoScroll();
 }
 
-function updateDrag(clientY) {
+const NEST_THRESHOLD = 36; // px horizontal shift to trigger nest/un-nest
+
+function updateDrag(clientY, clientX) {
   const { wrapper } = dragState;
   dragState.offsetY += (clientY - dragState.lastClientY) * 2;
   dragState.lastClientY = clientY;
   wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
   clampToBoundary();
   checkSwap();
+  if (clientX !== undefined) checkNesting(wrapper, clientX);
+}
+
+function checkNesting(wrapper, clientX) {
+  const dx = clientX - (dragState.nestBaseX ?? clientX);
+  if (Math.abs(dx) < NEST_THRESHOLD) return;
+
+  const itemId = +wrapper.dataset.id;
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+
+  const curLevel = item.level || 0;
+
+  if (dx > 0) {
+    // Shift right → nest under item above
+    const all = [...container.querySelectorAll('.list-item-wrapper')];
+    const idx = all.indexOf(wrapper);
+    if (idx > 0) {
+      const aboveId = +all[idx - 1].dataset.id;
+      const aboveItem = items.find(i => i.id === aboveId);
+      const newLevel = (aboveItem ? (aboveItem.level || 0) : 0) + 1;
+      if (newLevel !== curLevel) {
+        item.level = newLevel;
+        applyItemIndent(wrapper, newLevel);
+        if (navigator.vibrate) navigator.vibrate(10);
+      }
+    }
+  } else {
+    // Shift left → un-nest
+    const newLevel = Math.max(0, curLevel - 1);
+    if (newLevel !== curLevel) {
+      item.level = newLevel;
+      applyItemIndent(wrapper, newLevel);
+      if (navigator.vibrate) navigator.vibrate(10);
+    }
+  }
+
+  dragState.nestBaseX = clientX;
 }
 
 function checkSwap() {
@@ -588,7 +649,7 @@ function bindGesture(el, actionBg, itemId, wrapper) {
       active = false;
       el.style.transform = '';
       actionBg.style.opacity = '0';
-      startDrag(wrapper, curY);
+      startDrag(wrapper, curY, curX);
     }, 370);
   }, { passive: true });
 
