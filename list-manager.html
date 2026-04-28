@@ -664,11 +664,23 @@ function finalizeDrag() {
     }
   }
 
-  // Commit the pending nesting level to the item data
+  // Commit the pending nesting level to the parent, propagate delta to children.
   if (pendingLevel !== undefined) {
     const itemId = +wrapper.dataset.id;
-    const item = items.find(i => i.id === itemId);
-    if (item) item.level = pendingLevel;
+    const parentItem = items.find(i => i.id === itemId);
+    if (parentItem) {
+      const delta = pendingLevel - (parentItem.level || 0);
+      parentItem.level = pendingLevel;
+      applyItemIndent(wrapper, pendingLevel);
+      // Apply the same delta to every child so relative indents are preserved
+      for (const child of children) {
+        const childItem = items.find(i => i.id === +child.dataset.id);
+        if (childItem) {
+          childItem.level = Math.max(0, (childItem.level || 0) + delta);
+          applyItemIndent(child, childItem.level);
+        }
+      }
+    }
   }
 
   const listItem = wrapper.querySelector('.list-item');
