@@ -275,6 +275,41 @@
   .btn-add { background: #007aff; color: #fff; }
   .btn-add:active { background: #005fcb; }
   .btn-cancel:active { background: #e0e0e0; }
+
+  /* ── Drop zone panel ── */
+  #drop-zone-panel {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: 130px;
+    transform: translateX(100%);
+    transition: transform 0.18s cubic-bezier(.4,0,.2,1);
+    display: flex;
+    flex-direction: column;
+    z-index: 400;
+    pointer-events: none;
+  }
+  #drop-zone-panel.visible { transform: translateX(0); }
+
+  .drop-zone {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    opacity: 0.45;
+    transition: opacity 0.12s, transform 0.12s;
+    transform-origin: right center;
+  }
+  .drop-zone.active {
+    opacity: 1;
+    transform: scaleX(1.07);
+  }
+  .drop-zone[data-action="nest"]   { background: #34c759; }
+  .drop-zone[data-action="edit"]   { background: #007aff; }
+  .drop-zone[data-action="delete"] { background: #ff3b30; }
+  .dz-icon  { font-size: 30px; }
+  .dz-label { font-size: 12px; font-weight: 700; color: #fff; text-align: center; }
 </style>
 </head>
 <body>
@@ -302,9 +337,24 @@
   <div id="diag-log"></div>
 </div>
 
+<div id="drop-zone-panel">
+  <div class="drop-zone" data-action="nest">
+    <span class="dz-icon">➕</span>
+    <span class="dz-label">Вложенный</span>
+  </div>
+  <div class="drop-zone" data-action="edit">
+    <span class="dz-icon">✏️</span>
+    <span class="dz-label">Редактировать</span>
+  </div>
+  <div class="drop-zone" data-action="delete">
+    <span class="dz-icon">🗑</span>
+    <span class="dz-label">Удалить</span>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
-    <h2>Новый элемент</h2>
+    <h2 id="modal-title">Новый элемент</h2>
     <input type="text" id="input-line1" placeholder="Название (обязательно)" maxlength="60">
     <input type="text" id="input-line2" placeholder="Подпись (необязательно)" maxlength="80">
     <div class="modal-actions">
@@ -730,6 +780,32 @@ function finalizeDrag() {
   }, 220);
 }
 
+// ─── Drop zone panel ──────────────────────────────────────────────────────────
+const dropPanel = document.getElementById('drop-zone-panel');
+let activeDropZoneAction = null;
+
+function showDropZonePanel(fingerY) {
+  dropPanel.classList.add('visible');
+  const vh = window.innerHeight;
+  const zone = fingerY < vh / 3 ? 'nest' : fingerY < vh * 2 / 3 ? 'edit' : 'delete';
+  dropPanel.querySelectorAll('.drop-zone').forEach(z => {
+    z.classList.toggle('active', z.dataset.action === zone);
+  });
+  activeDropZoneAction = zone;
+}
+
+function hideDropZonePanel() {
+  dropPanel.classList.remove('visible');
+  dropPanel.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('active'));
+  activeDropZoneAction = null;
+}
+
+function executeDropZoneAction(action, itemId, wrapper) {
+  if (action === 'delete')      doDelete(itemId, wrapper);
+  else if (action === 'edit')   openModal('edit', itemId);
+  else if (action === 'nest')   openModal('nest', itemId);
+}
+
 // ─── Swipe gesture ───────────────────────────────────────────────────────────
 const SWIPE_H = 55;
 const SWIPE_V = 45;
@@ -788,14 +864,18 @@ function bindGesture(el, actionBg, itemId, wrapper) {
       }
     }
 
-    if (dx >= 0) {
-      el.style.transform = '';
+    e.preventDefault();
+
+    if (dx > 0) {
+      // Right swipe — show drop zone panel
+      el.style.transform = `translateX(${Math.min(dx, 120)}px)`;
       actionBg.style.opacity = '0';
-      actionBg.className = 'action-bg del';
+      showDropZonePanel(curY);
       return;
     }
 
-    e.preventDefault();
+    // Left swipe
+    hideDropZonePanel();
     const absDx = Math.abs(dx);
     const progress = Math.min(absDx / DELETE_PX, 1);
 
@@ -820,6 +900,10 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     clearTimeout(longTimer);
     longTimer = null;
     el.classList.remove('pressing');
+
+    const capturedAction = activeDropZoneAction;
+    hideDropZonePanel();
+
     if (dragState || !active) return;
     active = false;
 
@@ -830,7 +914,9 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     el.style.transform = '';
     actionBg.style.opacity = '0';
 
-    if (dx < -SWIPE_H) {
+    if (dx > 80 && capturedAction) {
+      executeDropZoneAction(capturedAction, itemId, wrapper);
+    } else if (dx < -SWIPE_H) {
       if (dy < -SWIPE_V)      doMoveUp(itemId);
       else if (dy > SWIPE_V)  doMoveDown(itemId);
       else                     doDelete(itemId, wrapper);
@@ -886,34 +972,77 @@ function showToast(msg) {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
 }
 
-// ─── Add item modal ───────────────────────────────────────────────────────────
-const overlay = document.getElementById('modal-overlay');
-const input1  = document.getElementById('input-line1');
-const input2  = document.getElementById('input-line2');
+// ─── Modal (add / edit / nest) ────────────────────────────────────────────────
+const overlay    = document.getElementById('modal-overlay');
+const input1     = document.getElementById('input-line1');
+const input2     = document.getElementById('input-line2');
+const modalTitle = document.getElementById('modal-title');
+const btnConfirm = document.getElementById('btn-confirm');
 
-document.getElementById('add-btn').addEventListener('click', () => {
-  input1.value = ''; input2.value = '';
+let modalMode     = 'add';
+let modalTargetId = null;
+
+function openModal(mode, targetId) {
+  modalMode     = mode || 'add';
+  modalTargetId = targetId || null;
+  input1.style.borderColor = '';
+
+  if (mode === 'edit') {
+    const item = items.find(i => i.id === targetId);
+    input1.value = item ? item.line1 : '';
+    input2.value = item?.line2 || '';
+    modalTitle.textContent = 'Редактировать';
+    btnConfirm.textContent = 'Сохранить';
+  } else if (mode === 'nest') {
+    input1.value = ''; input2.value = '';
+    modalTitle.textContent = 'Новый вложенный';
+    btnConfirm.textContent = 'Добавить';
+  } else {
+    input1.value = ''; input2.value = '';
+    modalTitle.textContent = 'Новый элемент';
+    btnConfirm.textContent = 'Добавить';
+  }
+
   overlay.classList.add('open');
   setTimeout(() => input1.focus(), 300);
-});
+}
 
-document.getElementById('btn-cancel').addEventListener('click', closeModal);
-overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
-document.getElementById('btn-confirm').addEventListener('click', addItem);
-[input1, input2].forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') addItem(); }));
+function closeModal() { overlay.classList.remove('open'); }
 
-function addItem() {
+function confirmModal() {
   const l1 = input1.value.trim();
   if (!l1) { input1.focus(); input1.style.borderColor = '#ff3b30'; return; }
   input1.style.borderColor = '';
   const l2 = input2.value.trim();
-  items.push({ id: nextId++, line1: l1, line2: l2 || undefined });
-  render();
-  closeModal();
-  showToast('Элемент добавлен');
+
+  if (modalMode === 'edit') {
+    const item = items.find(i => i.id === modalTargetId);
+    if (item) { item.line1 = l1; item.line2 = l2 || undefined; }
+    render();
+    closeModal();
+    showToast('Сохранено');
+  } else if (modalMode === 'nest') {
+    const pIdx = items.findIndex(i => i.id === modalTargetId);
+    const pLevel = pIdx >= 0 ? (items[pIdx].level || 0) : 0;
+    let ins = pIdx + 1;
+    while (ins < items.length && (items[ins].level || 0) > pLevel) ins++;
+    items.splice(ins, 0, { id: nextId++, line1: l1, line2: l2 || undefined, level: pLevel + 1 });
+    render();
+    closeModal();
+    showToast('Добавлен вложенный');
+  } else {
+    items.push({ id: nextId++, line1: l1, line2: l2 || undefined });
+    render();
+    closeModal();
+    showToast('Элемент добавлен');
+  }
 }
 
-function closeModal() { overlay.classList.remove('open'); }
+document.getElementById('add-btn').addEventListener('click', () => openModal('add'));
+document.getElementById('btn-cancel').addEventListener('click', closeModal);
+overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+btnConfirm.addEventListener('click', confirmModal);
+[input1, input2].forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') confirmModal(); }));
 
 // ─── Diagnostic panel ─────────────────────────────────────────────────────────
 const diagPanel  = document.getElementById('diag-panel');
