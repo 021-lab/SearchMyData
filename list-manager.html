@@ -435,6 +435,10 @@ function startDrag(wrapper, clientY, clientX) {
   }
 
   dragState = { wrapper, lastClientY: clientY, offsetY: 0, nestBaseX: clientX, children };
+
+  // Collapse children visually during drag
+  for (const child of children) child.style.display = 'none';
+
   startAutoScroll();
 }
 
@@ -658,7 +662,10 @@ function finalizeDrag() {
   setTimeout(() => {
     wrapper.style.transition = '';
     wrapper.classList.remove('is-dragging');
-    for (const child of children) child.style.transition = '';
+    for (const child of children) {
+      child.style.transition = '';
+      child.style.display = '';  // expand children after snap
+    }
     const wrappers = [...container.querySelectorAll('.list-item-wrapper')];
     items = wrappers.map(w => items.find(it => it.id === +w.dataset.id)).filter(Boolean);
     wrappers.forEach((w, i) => {
