@@ -131,10 +131,6 @@
     touch-action: none;
   }
 
-  /* ── Nested items ── */
-  .list-item.nested {
-    border-left: 3px solid;
-  }
 
   .item-line1 {
     font-size: 16px; font-weight: 600; color: #1a1a2e;
@@ -342,19 +338,12 @@ let nextId = 26;
 // ─── Render ──────────────────────────────────────────────────────────────────
 const container = document.getElementById('list-container');
 
-const NEST_COLORS = ['#007aff','#34c759','#ff9500','#af52de','#ff2d55','#5ac8fa'];
-
 function applyItemIndent(wrapper, level) {
   const el = wrapper.querySelector('.list-item');
-  const indent = level * 22;
-  el.style.paddingLeft = (16 + indent) + 'px';
-  if (level > 0) {
-    el.classList.add('nested');
-    el.style.borderLeftColor = NEST_COLORS[(level - 1) % NEST_COLORS.length];
-  } else {
-    el.classList.remove('nested');
-    el.style.borderLeftColor = '';
-  }
+  wrapper.style.marginLeft = (level * 24) + 'px';
+  el.classList.remove('nested');
+  el.style.borderLeftColor = '';
+  el.style.paddingLeft = '';
 }
 
 function render() {
