@@ -279,7 +279,7 @@
   /* ── Drop zone panel ── */
   #drop-zone-panel {
     position: fixed;
-    top: 0; right: 0; bottom: 0;
+    right: 0;
     width: 130px;
     transform: translateX(100%);
     transition: transform 0.18s cubic-bezier(.4,0,.2,1);
@@ -287,29 +287,32 @@
     flex-direction: column;
     z-index: 400;
     pointer-events: none;
+    border-radius: 12px 0 0 12px;
+    overflow: hidden;
+    box-shadow: -4px 0 20px rgba(0,0,0,0.18);
   }
   #drop-zone-panel.visible { transform: translateX(0); }
 
   .drop-zone {
-    flex: 1;
+    height: 62px;
+    flex-shrink: 0;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     opacity: 0.45;
-    transition: opacity 0.12s, transform 0.12s;
-    transform-origin: right center;
+    transition: opacity 0.12s, flex 0.15s;
   }
   .drop-zone.active {
     opacity: 1;
-    transform: scaleX(1.07);
+    flex: 1.6;
   }
   .drop-zone[data-action="nest"]   { background: #34c759; }
   .drop-zone[data-action="edit"]   { background: #007aff; }
   .drop-zone[data-action="delete"] { background: #ff3b30; }
-  .dz-icon  { font-size: 30px; }
-  .dz-label { font-size: 12px; font-weight: 700; color: #fff; text-align: center; }
+  .dz-icon  { font-size: 22px; }
+  .dz-label { font-size: 11px; font-weight: 700; color: #fff; }
 </style>
 </head>
 <body>
@@ -783,11 +786,18 @@ function finalizeDrag() {
 // ─── Drop zone panel ──────────────────────────────────────────────────────────
 const dropPanel = document.getElementById('drop-zone-panel');
 let activeDropZoneAction = null;
+const ZONE_H = 62;
 
-function showDropZonePanel(fingerY) {
+function showDropZonePanel(anchorY) {
+  const panelH = ZONE_H * 3;
+  const top = Math.max(0, Math.min(anchorY - panelH / 2, window.innerHeight - panelH));
+  dropPanel.style.top = top + 'px';
   dropPanel.classList.add('visible');
-  const vh = window.innerHeight;
-  const zone = fingerY < vh / 3 ? 'nest' : fingerY < vh * 2 / 3 ? 'edit' : 'delete';
+  updateActiveDropZone(0); // default: middle zone (edit)
+}
+
+function updateActiveDropZone(dy) {
+  const zone = dy < -ZONE_H / 2 ? 'nest' : dy > ZONE_H / 2 ? 'delete' : 'edit';
   dropPanel.querySelectorAll('.drop-zone').forEach(z => {
     z.classList.toggle('active', z.dataset.action === zone);
   });
@@ -813,6 +823,7 @@ const DELETE_PX = 120;
 
 function bindGesture(el, actionBg, itemId, wrapper) {
   let startX, startY, curX, curY, active = false, longTimer = null, lockedH = false;
+  let rightAnchorY = null;
 
   el.addEventListener('touchstart', e => {
     if (dragState) return;
@@ -821,12 +832,15 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     startY = curY = t.clientY;
     active = true;
     lockedH = false;
+    rightAnchorY = null;
     el.style.transition = 'none';
     el.classList.add('pressing');
 
     longTimer = setTimeout(() => {
       longTimer = null;
       active = false;
+      rightAnchorY = null;
+      hideDropZonePanel();
       el.style.transform = '';
       actionBg.style.opacity = '0';
       startDrag(wrapper, curY, curX);
@@ -867,14 +881,19 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     e.preventDefault();
 
     if (dx > 0) {
-      // Right swipe — show drop zone panel
-      el.style.transform = `translateX(${Math.min(dx, 120)}px)`;
+      if (rightAnchorY === null) {
+        rightAnchorY = el.getBoundingClientRect().top + el.offsetHeight / 2;
+        showDropZonePanel(rightAnchorY);
+      }
+      const offsetY = curY - startY;
+      el.style.transform = `translate(${Math.min(dx, 120)}px, ${offsetY}px)`;
       actionBg.style.opacity = '0';
-      showDropZonePanel(curY);
+      updateActiveDropZone(offsetY);
       return;
     }
 
     // Left swipe
+    rightAnchorY = null;
     hideDropZonePanel();
     const absDx = Math.abs(dx);
     const progress = Math.min(absDx / DELETE_PX, 1);
@@ -902,6 +921,8 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     el.classList.remove('pressing');
 
     const capturedAction = activeDropZoneAction;
+    const wasRightDrag = rightAnchorY !== null;
+    rightAnchorY = null;
     hideDropZonePanel();
 
     if (dragState || !active) return;
@@ -914,7 +935,7 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     el.style.transform = '';
     actionBg.style.opacity = '0';
 
-    if (dx > 80 && capturedAction) {
+    if (wasRightDrag && dx > 40 && capturedAction) {
       executeDropZoneAction(capturedAction, itemId, wrapper);
     } else if (dx < -SWIPE_H) {
       if (dy < -SWIPE_V)      doMoveUp(itemId);
