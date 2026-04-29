@@ -336,11 +336,11 @@
 </div>
 
 <div id="drop-zone-panel">
-  <div class="dz dz-edit" data-z="edit">
-    <span class="dz-icon">✏️</span><span class="dz-label">Изменить</span>
-  </div>
   <div class="dz dz-nest" data-z="nest">
     <span class="dz-icon">➕</span><span class="dz-label">Вложенный</span>
+  </div>
+  <div class="dz dz-edit" data-z="edit">
+    <span class="dz-icon">✏️</span><span class="dz-label">Изменить</span>
   </div>
   <div class="dz dz-del" data-z="delete">
     <span class="dz-icon">🗑</span><span class="dz-label">Удалить</span>
@@ -787,8 +787,8 @@ function showDrop(anchorY) {
   setDropZone(0);
 }
 
-function setDropZone(dx) {
-  const zone = dx < 60 ? 'edit' : dx < 110 ? 'nest' : 'delete';
+function setDropZone(dy) {
+  const zone = dy < -30 ? 'nest' : dy > 30 ? 'delete' : 'edit';
   if (zone === dropAction) return;
   dropAction = zone;
   dropPanel.querySelectorAll('.dz').forEach(z => z.classList.toggle('active', z.dataset.z === zone));
@@ -875,9 +875,10 @@ function bindGesture(el, actionBg, itemId, wrapper) {
         rdAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2;
         showDrop(rdAnchor);
       }
-      el.style.transform = `translateX(${Math.min(dx, 110)}px)`;
+      const oy = curY - startY;
+      el.style.transform = `translate(${Math.min(dx, 110)}px, ${oy}px)`;
       actionBg.style.opacity = '0';
-      setDropZone(dx);
+      setDropZone(oy);
       return;
     }
 
