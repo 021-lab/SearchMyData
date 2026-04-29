@@ -301,13 +301,10 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    opacity: 0.45;
-    transition: opacity 0.12s, flex 0.15s;
+    opacity: 0.4;
+    transition: opacity 0.1s;
   }
-  .drop-zone.active {
-    opacity: 1;
-    flex: 1.6;
-  }
+  .drop-zone.active { opacity: 1; }
   .drop-zone[data-action="nest"]   { background: #34c759; }
   .drop-zone[data-action="edit"]   { background: #007aff; }
   .drop-zone[data-action="delete"] { background: #ff3b30; }
@@ -341,13 +338,13 @@
 </div>
 
 <div id="drop-zone-panel">
-  <div class="drop-zone" data-action="nest">
-    <span class="dz-icon">➕</span>
-    <span class="dz-label">Вложенный</span>
-  </div>
   <div class="drop-zone" data-action="edit">
     <span class="dz-icon">✏️</span>
     <span class="dz-label">Редактировать</span>
+  </div>
+  <div class="drop-zone" data-action="nest">
+    <span class="dz-icon">➕</span>
+    <span class="dz-label">Вложенный</span>
   </div>
   <div class="drop-zone" data-action="delete">
     <span class="dz-icon">🗑</span>
@@ -793,11 +790,11 @@ function showDropZonePanel(anchorY) {
   const top = Math.max(0, Math.min(anchorY - panelH / 2, window.innerHeight - panelH));
   dropPanel.style.top = top + 'px';
   dropPanel.classList.add('visible');
-  updateActiveDropZone(0); // default: middle zone (edit)
+  updateActiveDropZone(0);
 }
 
-function updateActiveDropZone(dy) {
-  const zone = dy < -ZONE_H / 2 ? 'nest' : dy > ZONE_H / 2 ? 'delete' : 'edit';
+function updateActiveDropZone(dx) {
+  const zone = dx < 60 ? 'edit' : dx < 110 ? 'nest' : 'delete';
   dropPanel.querySelectorAll('.drop-zone').forEach(z => {
     z.classList.toggle('active', z.dataset.action === zone);
   });
@@ -885,10 +882,9 @@ function bindGesture(el, actionBg, itemId, wrapper) {
         rightAnchorY = el.getBoundingClientRect().top + el.offsetHeight / 2;
         showDropZonePanel(rightAnchorY);
       }
-      const offsetY = curY - startY;
-      el.style.transform = `translate(${Math.min(dx, 120)}px, ${offsetY}px)`;
+      el.style.transform = `translateX(${Math.min(dx, 120)}px)`;
       actionBg.style.opacity = '0';
-      updateActiveDropZone(offsetY);
+      updateActiveDropZone(dx);
       return;
     }
 
