@@ -31,6 +31,8 @@
   <div id="diag-log"></div>
 </div>
 
+<div id="tag-panel"></div>
+
 <div id="drop-zone-panel">
   <div class="dz dz-nest" data-z="nest">
     <span class="dz-icon">➕</span><span class="dz-label">Вложенный</span>
@@ -99,6 +101,7 @@ function render() {
     el.innerHTML = `
       <div class="item-line1">${chevron}${escHtml(item.line1)}</div>
       ${item.line2 ? `<div class="item-line2">${escHtml(item.line2)}</div>` : ''}
+      ${item.tags?.length ? `<div class="item-tags">${item.tags.map(t => `<span class="item-tag">${escHtml(t)}</span>`).join('')}</div>` : ''}
       <div class="item-index">${idx + 1}</div>
     `;
 
@@ -473,6 +476,69 @@ function execDrop(action, itemId, wrapper) {
   else if (action === 'nest')  openModal('nest', itemId);
 }
 
+// ─── Tag panel ────────────────────────────────────────────────────────────────
+const tagPanel = document.getElementById('tag-panel');
+let tagAction = null;
+
+const AVAILABLE_TAGS = ['Важное', 'Срочно', 'Купить', 'Дом', 'Работа', 'Отложить'];
+
+function showTagPanel(anchorY, itemId) {
+  const item = items.find(i => i.id === itemId);
+  const itemTags = item?.tags || [];
+  const notApplied = AVAILABLE_TAGS.filter(t => !itemTags.includes(t));
+  const applied    = AVAILABLE_TAGS.filter(t =>  itemTags.includes(t));
+  const ordered    = [...notApplied, ...applied];
+
+  tagPanel.innerHTML = '';
+  ordered.forEach(tag => {
+    const isApplied = itemTags.includes(tag);
+    const div = document.createElement('div');
+    div.className = 'tp-tag' + (isApplied ? ' has-tag' : '');
+    div.dataset.tag = tag;
+    div.innerHTML = `<span class="tp-icon">${isApplied ? '−' : '#'}</span><span class="tp-label">${escHtml(tag)}</span>`;
+    tagPanel.appendChild(div);
+  });
+
+  const tagH   = 48;
+  const totalH = ordered.length * tagH;
+  const top    = Math.max(0, Math.min(anchorY - totalH / 2, window.innerHeight - totalH));
+  tagPanel.style.top = top + 'px';
+  tagPanel._anchorY  = anchorY;
+  tagPanel.classList.add('visible');
+  setActiveTag(0);
+}
+
+function setActiveTag(dy) {
+  const tags = [...tagPanel.querySelectorAll('.tp-tag')];
+  if (!tags.length) return;
+  const tagH     = 48;
+  const panelTop = parseFloat(tagPanel.style.top);
+  const fingerY  = tagPanel._anchorY + dy;
+  const relY     = fingerY - panelTop;
+  const idx      = Math.max(0, Math.min(tags.length - 1, Math.floor(relY / tagH)));
+  const newTag   = tags[idx]?.dataset.tag || null;
+  if (newTag === tagAction) return;
+  tagAction = newTag;
+  tags.forEach(t => t.classList.toggle('active', t.dataset.tag === newTag));
+}
+
+function hideTagPanel() {
+  tagPanel.classList.remove('visible');
+  tagPanel.querySelectorAll('.tp-tag').forEach(t => t.classList.remove('active'));
+  tagAction = null;
+}
+
+function execTag(tag, itemId) {
+  if (!tag) return;
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+  if (!item.tags) item.tags = [];
+  const idx = item.tags.indexOf(tag);
+  if (idx >= 0) { item.tags.splice(idx, 1); showToast(`«${tag}» убран`); }
+  else          { item.tags.push(tag);       showToast(`«${tag}» добавлен`); }
+  render();
+}
+
 // ─── Swipe gesture ───────────────────────────────────────────────────────────
 const SWIPE_H = 55;
 const SWIPE_V = 45;
@@ -480,7 +546,7 @@ const DELETE_PX = 120;
 
 function bindGesture(el, actionBg, itemId, wrapper) {
   let startX, startY, curX, curY, active = false, longTimer = null, lockedH = false;
-  let rdAnchor = null;
+  let rdAnchor = null, ldAnchor = null;
 
   el.addEventListener('touchstart', e => {
     if (dragState) return;
@@ -490,6 +556,7 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     active = true;
     lockedH = false;
     rdAnchor = null;
+    ldAnchor = null;
     el.style.transition = 'none';
     el.classList.add('pressing');
 
@@ -537,39 +604,28 @@ function bindGesture(el, actionBg, itemId, wrapper) {
 
     e.preventDefault();
 
-    if (dx > 0) {
+    // Lock direction: once a panel is open, stick to that side
+    if (rdAnchor !== null || (ldAnchor === null && dx > 0)) {
       if (!rdAnchor) {
         rdAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2;
         showDrop(rdAnchor);
       }
       const oy = curY - startY;
-      el.style.transform = `translate(${Math.min(dx, 110)}px, ${oy}px)`;
+      el.style.transform = `translate(${Math.min(Math.max(dx, 0), 110)}px, ${oy}px)`;
       actionBg.style.opacity = '0';
       setDropZone(oy);
       return;
     }
 
-    // Left swipe
-    rdAnchor = null;
-    hideDrop();
-    const absDx = Math.abs(dx);
-    const progress = Math.min(absDx / DELETE_PX, 1);
-
-    if (absDx > SWIPE_H) {
-      if (dy < -SWIPE_V) {
-        actionBg.className = 'action-bg up';
-        actionBg.innerHTML = `<span class="action-icon">⬆️</span><span class="action-label">Вверх</span>`;
-      } else if (dy > SWIPE_V) {
-        actionBg.className = 'action-bg down';
-        actionBg.innerHTML = `<span class="action-icon">⬇️</span><span class="action-label">Вниз</span>`;
-      } else {
-        actionBg.className = 'action-bg del';
-        actionBg.innerHTML = `<span class="action-icon">🗑</span><span class="action-label">Удалить</span>`;
-      }
+    // Left drag — tag panel
+    if (!ldAnchor) {
+      ldAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2;
+      showTagPanel(ldAnchor, itemId);
     }
-
-    el.style.transform = `translateX(${dx}px)`;
-    actionBg.style.opacity = Math.min(progress * 1.5, 1).toString();
+    const oy = curY - startY;
+    el.style.transform = `translate(${Math.max(dx, -110)}px, ${oy}px)`;
+    actionBg.style.opacity = '0';
+    setActiveTag(oy);
   }, { passive: false });
 
   const onEnd = () => {
@@ -577,10 +633,14 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     longTimer = null;
     el.classList.remove('pressing');
 
-    const act = dropAction;
-    const wasRight = !!rdAnchor;
+    const act            = dropAction;
+    const wasRight       = !!rdAnchor;
+    const wasLeft        = !!ldAnchor;
+    const savedTagAction = tagAction;
     rdAnchor = null;
+    ldAnchor = null;
     hideDrop();
+    hideTagPanel();
 
     if (dragState || !active) return;
     active = false;
@@ -594,10 +654,8 @@ function bindGesture(el, actionBg, itemId, wrapper) {
 
     if (wasRight && dx > 30 && act) {
       execDrop(act, itemId, wrapper);
-    } else if (dx < -SWIPE_H) {
-      if (dy < -SWIPE_V)      doMoveUp(itemId);
-      else if (dy > SWIPE_V)  doMoveDown(itemId);
-      else                     doDelete(itemId, wrapper);
+    } else if (wasLeft && dx < -30 && savedTagAction) {
+      execTag(savedTagAction, itemId);
     } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
       toggleCollapse(itemId);
     }

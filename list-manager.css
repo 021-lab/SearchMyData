@@ -291,3 +291,40 @@ header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
 .dz-del  { background: #ff3b30; }
 .dz-icon  { font-size: 20px; }
 .dz-label { font-size: 11px; font-weight: 700; }
+
+/* ── Tag panel ── */
+#tag-panel {
+  position: fixed;
+  left: 0;
+  width: 130px;
+  display: none;
+  flex-direction: column;
+  z-index: 400;
+  pointer-events: none;
+  border-radius: 0 10px 10px 0;
+  overflow: hidden;
+  box-shadow: 3px 0 16px rgba(0,0,0,0.22);
+}
+#tag-panel.visible { display: flex; }
+
+.tp-tag {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  color: #fff;
+  background: #5856d6;
+  opacity: 0.35;
+  transition: opacity 0.1s;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  flex-shrink: 0;
+}
+.tp-tag.has-tag { background: #636366; }
+.tp-tag.active  { opacity: 1; }
+.tp-icon  { font-size: 13px; font-weight: 700; flex-shrink: 0; }
+.tp-label { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Item tags ── */
+.item-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.item-tag  { background: #ebebff; color: #5856d6; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; }
