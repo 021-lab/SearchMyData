@@ -34,15 +34,9 @@
 <div id="tag-panel"></div>
 
 <div id="drop-zone-panel">
-  <div class="dz dz-nest" data-z="nest">
-    <span class="dz-icon">➕</span><span class="dz-label">Вложенный</span>
-  </div>
-  <div class="dz dz-edit" data-z="edit">
-    <span class="dz-icon">✏️</span><span class="dz-label">Изменить</span>
-  </div>
-  <div class="dz dz-del" data-z="delete">
-    <span class="dz-icon">🗑</span><span class="dz-label">Удалить</span>
-  </div>
+  <div class="panel-item" data-action="nest"   style="background:#34c759"><span class="panel-icon">➕</span><span class="panel-label">Вложенный</span></div>
+  <div class="panel-item" data-action="edit"   style="background:#007aff"><span class="panel-icon">✏️</span><span class="panel-label">Изменить</span></div>
+  <div class="panel-item" data-action="delete" style="background:#ff3b30"><span class="panel-icon">🗑</span><span class="panel-label">Удалить</span></div>
 </div>
 
 <div class="modal-overlay" id="modal-overlay">
@@ -445,87 +439,73 @@ function finalizeDrag() {
   }, 220);
 }
 
-// ─── Drop zone panel ──────────────────────────────────────────────────────────
+// ─── Side panels (unified) ────────────────────────────────────────────────────
 const dropPanel = document.getElementById('drop-zone-panel');
-let dropAction = null;
+const tagPanel  = document.getElementById('tag-panel');
+let dropAction  = null;
+let tagAction   = null;
 
-function showDrop(anchorY) {
-  const h = 180; // 3 × 60px
-  const top = Math.max(0, Math.min(anchorY - h / 2, window.innerHeight - h));
-  dropPanel.style.top = top + 'px';
-  dropPanel.classList.add('visible');
-  setDropZone(0);
-}
-
-function setDropZone(dy) {
-  const zone = dy < -30 ? 'nest' : dy > 30 ? 'delete' : 'edit';
-  if (zone === dropAction) return;
-  dropAction = zone;
-  dropPanel.querySelectorAll('.dz').forEach(z => z.classList.toggle('active', z.dataset.z === zone));
-}
-
-function hideDrop() {
-  dropPanel.classList.remove('visible');
-  dropPanel.querySelectorAll('.dz').forEach(z => z.classList.remove('active'));
-  dropAction = null;
-}
-
-function execDrop(action, itemId, wrapper) {
-  if (action === 'delete')     doDelete(itemId, wrapper);
-  else if (action === 'edit')  openModal('edit', itemId);
-  else if (action === 'nest')  openModal('nest', itemId);
-}
-
-// ─── Tag panel ────────────────────────────────────────────────────────────────
-const tagPanel = document.getElementById('tag-panel');
-let tagAction = null;
-
+const ITEM_H        = 60;
 const AVAILABLE_TAGS = ['Важное', 'Срочно', 'Купить', 'Дом', 'Работа', 'Отложить'];
 
+function showPanel(panelEl, anchorY) {
+  const count  = panelEl.querySelectorAll('.panel-item').length;
+  const totalH = count * ITEM_H;
+  const top    = Math.max(0, Math.min(anchorY - totalH / 2, window.innerHeight - totalH));
+  panelEl.style.top   = top + 'px';
+  panelEl._anchorY    = anchorY;
+  panelEl.classList.add('visible');
+}
+
+function setActiveItem(panelEl, dy) {
+  const panelItems = [...panelEl.querySelectorAll('.panel-item')];
+  if (!panelItems.length) return null;
+  const top = parseFloat(panelEl.style.top);
+  const idx = Math.max(0, Math.min(panelItems.length - 1,
+    Math.floor((panelEl._anchorY + dy - top) / ITEM_H)));
+  panelItems.forEach((it, i) => it.classList.toggle('active', i === idx));
+  return panelItems[idx]?.dataset.action || null;
+}
+
+function hidePanel(panelEl) {
+  panelEl.classList.remove('visible');
+  panelEl.querySelectorAll('.panel-item').forEach(it => it.classList.remove('active'));
+}
+
+function showDropPanel(anchorY) {
+  showPanel(dropPanel, anchorY);
+  dropAction = setActiveItem(dropPanel, 0);
+}
+
+function hideDrop() { hidePanel(dropPanel); dropAction = null; }
+
 function showTagPanel(anchorY, itemId) {
-  const item = items.find(i => i.id === itemId);
+  const item     = items.find(i => i.id === itemId);
   const itemTags = item?.tags || [];
   const notApplied = AVAILABLE_TAGS.filter(t => !itemTags.includes(t));
   const applied    = AVAILABLE_TAGS.filter(t =>  itemTags.includes(t));
-  const ordered    = [...notApplied, ...applied];
 
   tagPanel.innerHTML = '';
-  ordered.forEach(tag => {
+  [...notApplied, ...applied].forEach(tag => {
     const isApplied = itemTags.includes(tag);
     const div = document.createElement('div');
-    div.className = 'tp-tag' + (isApplied ? ' has-tag' : '');
-    div.dataset.tag = tag;
-    div.innerHTML = `<span class="tp-icon">${isApplied ? '−' : '#'}</span><span class="tp-label">${escHtml(tag)}</span>`;
+    div.className = 'panel-item';
+    div.style.background = isApplied ? '#636366' : '#5856d6';
+    div.dataset.action = tag;
+    div.innerHTML = `<span class="panel-icon">${isApplied ? '−' : '#'}</span><span class="panel-label">${escHtml(tag)}</span>`;
     tagPanel.appendChild(div);
   });
 
-  const tagH   = 48;
-  const totalH = ordered.length * tagH;
-  const top    = Math.max(0, Math.min(anchorY - totalH / 2, window.innerHeight - totalH));
-  tagPanel.style.top = top + 'px';
-  tagPanel._anchorY  = anchorY;
-  tagPanel.classList.add('visible');
-  setActiveTag(0);
+  showPanel(tagPanel, anchorY);
+  tagAction = setActiveItem(tagPanel, 0);
 }
 
-function setActiveTag(dy) {
-  const tags = [...tagPanel.querySelectorAll('.tp-tag')];
-  if (!tags.length) return;
-  const tagH     = 48;
-  const panelTop = parseFloat(tagPanel.style.top);
-  const fingerY  = tagPanel._anchorY + dy;
-  const relY     = fingerY - panelTop;
-  const idx      = Math.max(0, Math.min(tags.length - 1, Math.floor(relY / tagH)));
-  const newTag   = tags[idx]?.dataset.tag || null;
-  if (newTag === tagAction) return;
-  tagAction = newTag;
-  tags.forEach(t => t.classList.toggle('active', t.dataset.tag === newTag));
-}
+function hideTagPanel() { hidePanel(tagPanel); tagAction = null; }
 
-function hideTagPanel() {
-  tagPanel.classList.remove('visible');
-  tagPanel.querySelectorAll('.tp-tag').forEach(t => t.classList.remove('active'));
-  tagAction = null;
+function execDrop(action, itemId, wrapper) {
+  if (action === 'delete')    doDelete(itemId, wrapper);
+  else if (action === 'edit') openModal('edit', itemId);
+  else if (action === 'nest') openModal('nest', itemId);
 }
 
 function execTag(tag, itemId) {
@@ -604,34 +584,46 @@ function bindGesture(el, actionBg, itemId, wrapper) {
 
     e.preventDefault();
 
-    // Lock direction: once a panel is open, stick to that side
-    if (rdAnchor !== null || (ldAnchor === null && dx > 0)) {
+    const thresh = window.innerWidth * 0.20;
+    const oy     = curY - startY;
+
+    // ── Right panel ────────────────────────────────────────────────────────
+    if (rdAnchor !== null || (ldAnchor === null && dx > thresh)) {
+      if (rdAnchor !== null && dx < thresh) {
+        hideDrop(); rdAnchor = null;
+        el.style.transform = `translate(0px, ${oy}px)`;
+        return;
+      }
       if (!rdAnchor) {
         rdAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2;
-        showDrop(rdAnchor);
+        showDropPanel(rdAnchor);
       }
-      const oy = curY - startY;
-      el.style.transform = `translate(${Math.min(Math.max(dx, 0), 110)}px, ${oy}px)`;
+      el.style.transform = `translate(${Math.min(dx, 110)}px, ${oy}px)`;
       actionBg.style.opacity = '0';
-      setDropZone(oy);
+      dropAction = setActiveItem(dropPanel, oy);
       return;
     }
 
-    // Left drag — tag panel
-    if (ldAnchor && dx > -20) {
-      hideTagPanel();
-      ldAnchor = null;
-      el.style.transform = '';
+    // ── Left panel ─────────────────────────────────────────────────────────
+    if (ldAnchor !== null || dx < -thresh) {
+      if (ldAnchor !== null && dx > -thresh) {
+        hideTagPanel(); ldAnchor = null;
+        el.style.transform = `translate(0px, ${oy}px)`;
+        return;
+      }
+      if (!ldAnchor) {
+        ldAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2;
+        showTagPanel(ldAnchor, itemId);
+      }
+      el.style.transform = `translate(${Math.max(dx, -110)}px, ${oy}px)`;
+      actionBg.style.opacity = '0';
+      tagAction = setActiveItem(tagPanel, oy);
       return;
     }
-    if (!ldAnchor && dx <= -20) {
-      ldAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2;
-      showTagPanel(ldAnchor, itemId);
-    }
-    const oy = curY - startY;
-    el.style.transform = `translate(${Math.max(dx, -110)}px, ${oy}px)`;
+
+    // ── Neutral zone — no panel, element follows finger ────────────────────
+    el.style.transform = `translate(${dx}px, ${oy}px)`;
     actionBg.style.opacity = '0';
-    if (ldAnchor) setActiveTag(oy);
   }, { passive: false });
 
   const onEnd = () => {

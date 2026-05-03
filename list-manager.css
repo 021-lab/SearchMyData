@@ -259,71 +259,38 @@ header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
 .btn-add:active { background: #005fcb; }
 .btn-cancel:active { background: #e0e0e0; }
 
-/* ── Drop zone panel ── */
-#drop-zone-panel {
+/* ── Side panels (drop zone + tag) ── */
+#drop-zone-panel, #tag-panel {
   position: fixed;
-  right: 0;
-  width: 120px;
+  width: 124px;
   display: none;
   flex-direction: column;
   z-index: 400;
   pointer-events: none;
-  border-radius: 10px 0 0 10px;
   overflow: hidden;
-  box-shadow: -3px 0 16px rgba(0,0,0,0.22);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.28);
 }
-#drop-zone-panel.visible { display: flex; }
+#drop-zone-panel { right: 0; border-radius: 12px 0 0 12px; }
+#tag-panel       { left:  0; border-radius: 0 12px 12px 0; }
+#drop-zone-panel.visible, #tag-panel.visible { display: flex; }
 
-.dz {
+.panel-item {
   height: 60px;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 3px;
   color: #fff;
-  opacity: 0.32;
-  transition: opacity 0.1s;
-}
-.dz.active { opacity: 1; }
-.dz-edit { background: #007aff; }
-.dz-nest { background: #34c759; }
-.dz-del  { background: #ff3b30; }
-.dz-icon  { font-size: 20px; }
-.dz-label { font-size: 11px; font-weight: 700; }
-
-/* ── Tag panel ── */
-#tag-panel {
-  position: fixed;
-  left: 0;
-  width: 130px;
-  display: none;
-  flex-direction: column;
-  z-index: 400;
-  pointer-events: none;
-  border-radius: 0 10px 10px 0;
-  overflow: hidden;
-  box-shadow: 3px 0 16px rgba(0,0,0,0.22);
-}
-#tag-panel.visible { display: flex; }
-
-.tp-tag {
-  height: 48px;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  gap: 8px;
-  color: #fff;
-  background: #5856d6;
-  opacity: 0.35;
-  transition: opacity 0.1s;
-  border-bottom: 1px solid rgba(255,255,255,0.12);
+  opacity: 0.30;
+  transition: opacity 0.12s;
   flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
 }
-.tp-tag.has-tag { background: #636366; }
-.tp-tag.active  { opacity: 1; }
-.tp-icon  { font-size: 13px; font-weight: 700; flex-shrink: 0; }
-.tp-label { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-item:last-child { border-bottom: none; }
+.panel-item.active { opacity: 1; }
+.panel-icon  { font-size: 20px; line-height: 1; }
+.panel-label { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
 
 /* ── Item tags ── */
 .item-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
