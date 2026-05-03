@@ -618,14 +618,20 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     }
 
     // Left drag — tag panel
-    if (!ldAnchor) {
+    if (ldAnchor && dx > -20) {
+      hideTagPanel();
+      ldAnchor = null;
+      el.style.transform = '';
+      return;
+    }
+    if (!ldAnchor && dx <= -20) {
       ldAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2;
       showTagPanel(ldAnchor, itemId);
     }
     const oy = curY - startY;
     el.style.transform = `translate(${Math.max(dx, -110)}px, ${oy}px)`;
     actionBg.style.opacity = '0';
-    setActiveTag(oy);
+    if (ldAnchor) setActiveTag(oy);
   }, { passive: false });
 
   const onEnd = () => {
