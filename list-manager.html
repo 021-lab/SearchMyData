@@ -35,6 +35,7 @@
 
 <div id="drop-zone-panel">
   <div class="panel-item" data-action="nest"   style="background:#34c759"><span class="panel-icon">➕</span><span class="panel-label">Вложенный</span></div>
+  <div class="panel-item" data-action="view"   style="background:#5ac8fa"><span class="panel-icon">👁</span><span class="panel-label">Просмотр</span></div>
   <div class="panel-item" data-action="edit"   style="background:#007aff"><span class="panel-icon">✏️</span><span class="panel-label">Изменить</span></div>
   <div class="panel-item" data-action="delete" style="background:#ff3b30"><span class="panel-icon">🗑</span><span class="panel-label">Удалить</span></div>
 </div>
@@ -42,6 +43,11 @@
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
     <h2 id="modal-title">Новый элемент</h2>
+    <div id="modal-view-content" style="display:none; margin-bottom:12px;">
+      <div id="view-line1" style="font-size:17px; font-weight:600; color:#1a1a2e; margin-bottom:5px;"></div>
+      <div id="view-line2" style="font-size:14px; color:#888; margin-bottom:8px;"></div>
+      <div id="view-tags" class="item-tags"></div>
+    </div>
     <input type="text" id="input-line1" placeholder="Название (обязательно)" maxlength="60">
     <input type="text" id="input-line2" placeholder="Подпись (необязательно)" maxlength="80">
     <div class="modal-actions">
@@ -506,6 +512,7 @@ function execDrop(action, itemId, wrapper) {
   if (action === 'delete')    doDelete(itemId, wrapper);
   else if (action === 'edit') openModal('edit', itemId);
   else if (action === 'nest') openModal('nest', itemId);
+  else if (action === 'view') openModal('view', itemId);
 }
 
 function execTag(tag, itemId) {
@@ -529,7 +536,7 @@ function bindGesture(el, actionBg, itemId, wrapper) {
   let rdAnchor = null, ldAnchor = null;
 
   el.addEventListener('touchstart', e => {
-    if (dragState) return;
+    if (dragState || modalOpen) return;
     const t = e.touches[0];
     startX = curX = t.clientX;
     startY = curY = t.clientY;
@@ -707,21 +714,48 @@ function showToast(msg) {
 }
 
 // ─── Modal (add / edit / nest) ────────────────────────────────────────────────
-const overlay    = document.getElementById('modal-overlay');
-const input1     = document.getElementById('input-line1');
-const input2     = document.getElementById('input-line2');
-const modalTitle = document.getElementById('modal-title');
-const btnConfirm = document.getElementById('btn-confirm');
+const overlay       = document.getElementById('modal-overlay');
+const input1        = document.getElementById('input-line1');
+const input2        = document.getElementById('input-line2');
+const modalTitle    = document.getElementById('modal-title');
+const btnConfirm    = document.getElementById('btn-confirm');
+const btnCancel     = document.getElementById('btn-cancel');
+const viewContent   = document.getElementById('modal-view-content');
+const viewLine1     = document.getElementById('view-line1');
+const viewLine2     = document.getElementById('view-line2');
+const viewTagsEl    = document.getElementById('view-tags');
 
 let modalMode     = 'add';
 let modalTargetId = null;
+let modalOpen     = false;
 
 function openModal(mode, targetId) {
   modalMode     = mode || 'add';
   modalTargetId = targetId || null;
-  input1.style.borderColor = '';
+  modalOpen     = true;
 
-  if (mode === 'edit') {
+  // Reset to edit layout by default
+  viewContent.style.display  = 'none';
+  input1.style.display       = '';
+  input2.style.display       = '';
+  btnConfirm.style.display   = '';
+  btnCancel.textContent      = 'Отмена';
+  input1.style.borderColor   = '';
+
+  if (mode === 'view') {
+    const item = items.find(i => i.id === targetId);
+    viewLine1.textContent      = item?.line1 || '';
+    viewLine2.textContent      = item?.line2 || '';
+    viewLine2.style.display    = item?.line2 ? '' : 'none';
+    viewTagsEl.innerHTML       = (item?.tags || []).map(t => `<span class="item-tag">${escHtml(t)}</span>`).join('');
+    viewTagsEl.style.display   = item?.tags?.length ? '' : 'none';
+    viewContent.style.display  = '';
+    input1.style.display       = 'none';
+    input2.style.display       = 'none';
+    btnConfirm.style.display   = 'none';
+    btnCancel.textContent      = 'Закрыть';
+    modalTitle.textContent     = 'Просмотр';
+  } else if (mode === 'edit') {
     const item = items.find(i => i.id === targetId);
     input1.value = item ? item.line1 : '';
     input2.value = item?.line2 || '';
@@ -738,10 +772,13 @@ function openModal(mode, targetId) {
   }
 
   overlay.classList.add('open');
-  input1.focus();
+  if (mode !== 'view') input1.focus();
 }
 
-function closeModal() { overlay.classList.remove('open'); }
+function closeModal() {
+  overlay.classList.remove('open');
+  modalOpen = false;
+}
 
 function confirmModal() {
   const l1 = input1.value.trim();
