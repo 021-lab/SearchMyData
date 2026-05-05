@@ -771,8 +771,15 @@ function openModal(mode, targetId) {
     btnConfirm.textContent = 'Добавить';
   }
 
+  // Focus input BEFORE opening overlay — iOS only triggers keyboard
+  // within the original gesture; calling focus() first, while the input
+  // is in the DOM but under opacity:0, keeps it in the trusted context.
+  if (mode !== 'view') {
+    input1.readOnly = true;   // prevent keyboard flash before modal appears
+    input1.focus();
+    input1.readOnly = false;  // remove readonly so keyboard shows when modal opens
+  }
   overlay.classList.add('open');
-  if (mode !== 'view') input1.focus();
 }
 
 function closeModal() {
