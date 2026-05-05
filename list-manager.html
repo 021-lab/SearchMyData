@@ -331,6 +331,7 @@
   <div id="diag-log-header">
     <span id="diag-log-label">Лог</span>
     <button class="diag-btn" id="diag-copy-btn">Копировать лог</button>
+    <button class="diag-btn" id="diag-reset-btn">Сбросить данные</button>
   </div>
   <div id="diag-log"></div>
 </div>
@@ -363,7 +364,9 @@
 'use strict';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
-let items = [
+const STORAGE_KEY = 'list-manager-state';
+
+const DEFAULT_ITEMS = [
   { id:  1, line1: 'Молоко 3.2%',           line2: '2 пакета, магазин у дома' },
   { id:  2, line1: 'Хлеб ржаной' },
   { id: 26, line1: 'Бородинский',            line2: '400 г', level: 1 },
@@ -396,7 +399,35 @@ let items = [
   { id: 24, line1: 'Сахар',                 line2: '1 кг, белый' },
   { id: 25, line1: 'Соль',                  line2: 'Морская, мелкая, 500 г' },
 ];
-let nextId = 32;
+const DEFAULT_NEXT_ID = 32;
+
+let items = [];
+let nextId = DEFAULT_NEXT_ID;
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ items, nextId }));
+  } catch (e) {}
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.items)) return false;
+    items = parsed.items;
+    nextId = typeof parsed.nextId === 'number' ? parsed.nextId : DEFAULT_NEXT_ID;
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+if (!loadState()) {
+  items = DEFAULT_ITEMS.map(i => ({ ...i }));
+  nextId = DEFAULT_NEXT_ID;
+}
 
 // ─── Render ──────────────────────────────────────────────────────────────────
 const container = document.getElementById('list-container');
@@ -447,6 +478,7 @@ function render() {
     applyItemIndent(wrapper, level);
     bindGesture(el, actionBg, item.id, wrapper);
   });
+  saveState();
 }
 
 function escHtml(s) {
@@ -1097,6 +1129,17 @@ document.getElementById('diag-copy-btn').addEventListener('click', () => {
   navigator.clipboard.writeText(text)
     .then(() => showToast('Лог скопирован'))
     .catch(() => showToast('Не удалось скопировать'));
+});
+
+document.getElementById('diag-reset-btn').addEventListener('click', () => {
+  localStorage.removeItem(STORAGE_KEY);
+  items = DEFAULT_ITEMS.map(i => ({ ...i }));
+  nextId = DEFAULT_NEXT_ID;
+  undoSnapshot = null;
+  undoBtn.disabled = true;
+  render();
+  showToast('Данные сброшены');
+  diagLog_('Данные сброшены в исходные', 'warn');
 });
 
 let mediaRecorder   = null;
