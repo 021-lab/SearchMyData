@@ -61,15 +61,60 @@
 <script>
 'use strict';
 
+// ─── Tree helpers ─────────────────────────────────────────────────────────────
+function findItem(id, tree = items) {
+  for (const item of tree) {
+    if (item.id === id) return item;
+    if (item.children?.length) {
+      const found = findItem(id, item.children);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function removeFromTree(id, tree = items) {
+  for (let i = 0; i < tree.length; i++) {
+    if (tree[i].id === id) return tree.splice(i, 1)[0];
+    if (tree[i].children?.length) {
+      const found = removeFromTree(id, tree[i].children);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+// Rebuild nested tree from flat DOM-ordered list [{id, level}].
+// Collects current node data from items, then re-parents by level.
+function buildTree(flatList) {
+  const nodeMap = new Map();
+  function collect(tree) {
+    for (const item of tree) {
+      nodeMap.set(item.id, item);
+      if (item.children?.length) collect(item.children);
+    }
+  }
+  collect(items);
+
+  const root = [];
+  const stack = [{ node: { children: root }, level: -1 }];
+  for (const { id, level } of flatList) {
+    const src = nodeMap.get(id);
+    if (!src) continue;
+    const node = { ...src, children: [] };
+    while (stack.length > 1 && stack[stack.length - 1].level >= level) stack.pop();
+    stack[stack.length - 1].node.children.push(node);
+    stack.push({ node, level });
+  }
+  return root;
+}
+
 // ─── Render ──────────────────────────────────────────────────────────────────
 const container = document.getElementById('list-container');
 
 function applyItemIndent(wrapper, level) {
-  const el = wrapper.querySelector('.list-item');
   wrapper.style.marginLeft = (level * 24) + 'px';
-  el.classList.remove('nested');
-  el.style.borderLeftColor = '';
-  el.style.paddingLeft = '';
+  wrapper.dataset.level = level;
 }
 
 function render() {
@@ -78,18 +123,18 @@ function render() {
     container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>Список пуст. Нажмите + чтобы добавить.</p></div>`;
     return;
   }
-  let collapsedAt = Infinity;
-  items.forEach((item, idx) => {
-    const level = item.level || 0;
-    const hidden = level > collapsedAt;
-    if (!hidden) collapsedAt = item.collapsed ? level : Infinity;
+  let visIdx = 0;
 
-    const hasChildren = idx < items.length - 1 && (items[idx + 1].level || 0) > level;
+  function renderNode(node, level, isHidden) {
+    visIdx++;
+    const idx = visIdx;
+    const hasChildren = node.children?.length > 0;
 
     const wrapper = document.createElement('div');
     wrapper.className = 'list-item-wrapper';
-    wrapper.dataset.id = item.id;
-    if (hidden) wrapper.style.display = 'none';
+    wrapper.dataset.id = node.id;
+    wrapper.dataset.level = level;
+    if (isHidden) wrapper.style.display = 'none';
 
     const actionBg = document.createElement('div');
     actionBg.className = 'action-bg del';
@@ -97,20 +142,29 @@ function render() {
 
     const el = document.createElement('div');
     el.className = 'list-item';
-    const chevron = hasChildren ? `<span class="chevron">${item.collapsed ? '▶' : '▼'}</span>` : '';
+    const chevron = hasChildren ? `<span class="chevron">${node.collapsed ? '▶' : '▼'}</span>` : '';
     el.innerHTML = `
-      <div class="item-line1">${chevron}${escHtml(item.line1)}</div>
-      ${item.line2 ? `<div class="item-line2">${escHtml(item.line2)}</div>` : ''}
-      ${item.tags?.length ? `<div class="item-tags">${item.tags.map(t => `<span class="item-tag">${escHtml(t)}</span>`).join('')}</div>` : ''}
-      <div class="item-index">${idx + 1}</div>
+      <div class="item-line1">${chevron}${escHtml(node.line1)}</div>
+      ${node.line2 ? `<div class="item-line2">${escHtml(node.line2)}</div>` : ''}
+      ${node.tags?.length ? `<div class="item-tags">${node.tags.map(t => `<span class="item-tag">${escHtml(t)}</span>`).join('')}</div>` : ''}
+      <div class="item-index">${idx}</div>
     `;
 
     wrapper.appendChild(actionBg);
     wrapper.appendChild(el);
     container.appendChild(wrapper);
     applyItemIndent(wrapper, level);
-    bindGesture(el, actionBg, item.id, wrapper);
-  });
+    bindGesture(el, actionBg, node.id, wrapper);
+
+    if (node.children?.length) {
+      const childHidden = isHidden || !!node.collapsed;
+      for (const child of node.children) {
+        renderNode(child, level + 1, childHidden);
+      }
+    }
+  }
+
+  for (const item of items) renderNode(item, 0, false);
 }
 
 function escHtml(s) {
@@ -131,16 +185,13 @@ undoBtn.addEventListener('click', () => {
 });
 
 function saveUndoSnapshot() {
-  undoSnapshot = items.map(i => ({ ...i }));
+  undoSnapshot = JSON.parse(JSON.stringify(items));
   undoBtn.disabled = false;
 }
 
 function toggleCollapse(itemId) {
-  const idx = items.findIndex(i => i.id === itemId);
-  if (idx < 0) return;
-  const item = items[idx];
-  const hasChildren = idx < items.length - 1 && (items[idx + 1].level || 0) > (item.level || 0);
-  if (!hasChildren) return;
+  const item = findItem(itemId);
+  if (!item || !item.children?.length) return;
   item.collapsed = !item.collapsed;
   render();
 }
@@ -187,15 +238,13 @@ function startDrag(wrapper, clientY, clientX) {
   listItem.style.transition = 'none';
   wrapper.classList.add('is-dragging');
 
-  // Collect group: all items with higher level immediately following parent
+  // Collect group: parent + all immediately-following items at deeper level
   const allWrappers = [...container.querySelectorAll('.list-item-wrapper')];
   const startIdx = allWrappers.indexOf(wrapper);
-  const parentItem = items.find(i => i.id === +wrapper.dataset.id);
-  const baseLevel = parentItem?.level || 0;
+  const baseLevel = +wrapper.dataset.level || 0;
   const children = [];
   for (let i = startIdx + 1; i < allWrappers.length; i++) {
-    const childItem = items.find(it => it.id === +allWrappers[i].dataset.id);
-    if ((childItem?.level || 0) <= baseLevel) break;
+    if ((+allWrappers[i].dataset.level || 0) <= baseLevel) break;
     children.push(allWrappers[i]);
   }
 
@@ -248,9 +297,7 @@ function updateDraggedLevel() {
   const idx = all.indexOf(wrapper);
   let newLevel = 0;
   if (idx > 0) {
-    const aboveId  = +all[idx - 1].dataset.id;
-    const aboveItem = items.find(i => i.id === aboveId);
-    const aboveLevel = aboveItem ? (aboveItem.level || 0) : 0;
+    const aboveLevel = +all[idx - 1].dataset.level || 0;
     newLevel = dragState.rightShifted ? aboveLevel + 1 : aboveLevel;
   }
   dragState.pendingLevel = newLevel;
@@ -290,22 +337,6 @@ function checkSwap() {
   }
 }
 
-function getVisibleBounds() {
-  if (!dragState) return null;
-  const { wrapper } = dragState;
-  const vh = window.innerHeight;
-  const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
-  const visible = [...container.querySelectorAll('.list-item-wrapper')]
-    .filter(w => w !== wrapper)
-    .filter(w => { const r = w.getBoundingClientRect(); return r.bottom > headerBottom && r.top < vh; });
-  if (!visible.length) return null;
-  return {
-    visible,
-    top:    visible[0].getBoundingClientRect().top,
-    bottom: visible[visible.length - 1].getBoundingClientRect().bottom,
-  };
-}
-
 // Clamp element to viewport edges (header bottom ↔ viewport bottom + 30px overshoot for swap).
 function clampToBoundary() {
   if (!dragState) return;
@@ -313,10 +344,10 @@ function clampToBoundary() {
   const vh = window.innerHeight;
   const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
   const r = wrapper.getBoundingClientRect();
-  if (r.top < headerBottom - 30) {          // 30px overshoot so mid can pass first item's mid
+  if (r.top < headerBottom - 30) {
     dragState.offsetY += (headerBottom - 30) - r.top;
     wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-  } else if (r.bottom > vh + 30) {          // 30px overshoot so mid can pass last item's mid
+  } else if (r.bottom > vh + 30) {
     dragState.offsetY -= r.bottom - (vh + 30);
     wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
   }
@@ -337,20 +368,16 @@ function autoScrollStep() {
   const { wrapper } = dragState;
   const vh = window.innerHeight;
   const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
-
   const { children } = dragState;
 
-  // All list items except the dragged group, in DOM order
   const all = [...container.querySelectorAll('.list-item-wrapper')]
     .filter(w => w !== wrapper && !children.includes(w));
 
-  // Boundary markers: first/last visible items
   const visible = all.filter(w => { const r = w.getBoundingClientRect(); return r.bottom > headerBottom && r.top < vh; });
   updateBoundaryMarkers(visible);
 
   const dragRect = wrapper.getBoundingClientRect();
 
-  // DOM order including dragged group
   const allWithDragged = [...container.querySelectorAll('.list-item-wrapper')];
   const parentIdx   = allWithDragged.indexOf(wrapper);
   const draggedIsFirst = parentIdx === 0;
@@ -392,15 +419,15 @@ function finalizeDrag() {
   const { wrapper, pendingLevel, rightShifted, children } = dragState;
   dragState = null;
 
-  // If no right shift: correct position when group is between items of different levels.
+  // If no right shift: correct position when group lands between items of different levels.
   if (!rightShifted) {
     const all = [...container.querySelectorAll('.list-item-wrapper')];
     const idx = all.indexOf(wrapper);
     const groupEnd = idx + children.length;
     if (idx > 0 && groupEnd < all.length - 1) {
-      const aboveItem = items.find(i => i.id === +all[idx - 1].dataset.id);
-      const belowItem = items.find(i => i.id === +all[groupEnd + 1].dataset.id);
-      if ((belowItem?.level || 0) > (aboveItem?.level || 0)) {
+      const aboveLevel = +all[idx - 1].dataset.level || 0;
+      const belowLevel = +all[groupEnd + 1].dataset.level || 0;
+      if (belowLevel > aboveLevel) {
         const aboveWrapper = all[idx - 1];
         container.insertBefore(wrapper, aboveWrapper);
         for (const child of children) container.insertBefore(child, aboveWrapper);
@@ -408,22 +435,13 @@ function finalizeDrag() {
     }
   }
 
-  // Commit the pending nesting level to the parent, propagate delta to children.
+  // Apply pending nesting level; propagate delta to children.
   if (pendingLevel !== undefined) {
-    const itemId = +wrapper.dataset.id;
-    const parentItem = items.find(i => i.id === itemId);
-    if (parentItem) {
-      const delta = pendingLevel - (parentItem.level || 0);
-      parentItem.level = pendingLevel;
-      applyItemIndent(wrapper, pendingLevel);
-      // Apply the same delta to every child so relative indents are preserved
-      for (const child of children) {
-        const childItem = items.find(i => i.id === +child.dataset.id);
-        if (childItem) {
-          childItem.level = Math.max(0, (childItem.level || 0) + delta);
-          applyItemIndent(child, childItem.level);
-        }
-      }
+    const delta = pendingLevel - (+wrapper.dataset.level || 0);
+    applyItemIndent(wrapper, pendingLevel);
+    for (const child of children) {
+      const newChildLevel = Math.max(0, (+child.dataset.level || 0) + delta);
+      applyItemIndent(child, newChildLevel);
     }
   }
 
@@ -440,7 +458,8 @@ function finalizeDrag() {
     wrapper.style.transition = '';
     wrapper.classList.remove('is-dragging');
     const wrappers = [...container.querySelectorAll('.list-item-wrapper')];
-    items = wrappers.map(w => items.find(it => it.id === +w.dataset.id)).filter(Boolean);
+    const flatList = wrappers.map(w => ({ id: +w.dataset.id, level: +w.dataset.level || 0 }));
+    items = buildTree(flatList);
     render();
   }, 220);
 }
@@ -451,7 +470,7 @@ const tagPanel  = document.getElementById('tag-panel');
 let dropAction  = null;
 let tagAction   = null;
 
-const ITEM_H        = 60;
+const ITEM_H         = 60;
 const AVAILABLE_TAGS = ['Важное', 'Срочно', 'Купить', 'Дом', 'Работа', 'Отложить'];
 
 function showPanel(panelEl, anchorY) {
@@ -486,7 +505,7 @@ function showDropPanel(anchorY) {
 function hideDrop() { hidePanel(dropPanel); dropAction = null; }
 
 function showTagPanel(anchorY, itemId) {
-  const item     = items.find(i => i.id === itemId);
+  const item     = findItem(itemId);
   const itemTags = item?.tags || [];
   const notApplied = AVAILABLE_TAGS.filter(t => !itemTags.includes(t));
   const applied    = AVAILABLE_TAGS.filter(t =>  itemTags.includes(t));
@@ -517,7 +536,7 @@ function execDrop(action, itemId, wrapper) {
 
 function execTag(tag, itemId) {
   if (!tag) return;
-  const item = items.find(i => i.id === itemId);
+  const item = findItem(itemId);
   if (!item) return;
   if (!item.tags) item.tags = [];
   const idx = item.tags.indexOf(tag);
@@ -527,10 +546,6 @@ function execTag(tag, itemId) {
 }
 
 // ─── Swipe gesture ───────────────────────────────────────────────────────────
-const SWIPE_H = 55;
-const SWIPE_V = 45;
-const DELETE_PX = 120;
-
 function bindGesture(el, actionBg, itemId, wrapper) {
   let startX, startY, curX, curY, active = false, longTimer = null, lockedH = false;
   let rdAnchor = null, ldAnchor = null;
@@ -681,26 +696,10 @@ function doDelete(itemId, wrapper) {
     wrapper.style.marginBottom = '0';
   });
   setTimeout(() => {
-    items = items.filter(i => i.id !== itemId);
+    removeFromTree(itemId);
     render();
     showToast('Элемент удалён');
   }, 310);
-}
-
-function doMoveUp(itemId) {
-  const idx = items.findIndex(i => i.id === itemId);
-  if (idx <= 0) { showToast('Уже в начале'); return; }
-  [items[idx - 1], items[idx]] = [items[idx], items[idx - 1]];
-  render();
-  showToast('Перемещено вверх');
-}
-
-function doMoveDown(itemId) {
-  const idx = items.findIndex(i => i.id === itemId);
-  if (idx >= items.length - 1) { showToast('Уже в конце'); return; }
-  [items[idx], items[idx + 1]] = [items[idx + 1], items[idx]];
-  render();
-  showToast('Перемещено вниз');
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -743,7 +742,7 @@ function openModal(mode, targetId) {
   input1.style.borderColor   = '';
 
   if (mode === 'view') {
-    const item = items.find(i => i.id === targetId);
+    const item = findItem(targetId);
     viewLine1.textContent      = item?.line1 || '';
     viewLine2.textContent      = item?.line2 || '';
     viewLine2.style.display    = item?.line2 ? '' : 'none';
@@ -756,7 +755,7 @@ function openModal(mode, targetId) {
     btnCancel.textContent      = 'Закрыть';
     modalTitle.textContent     = 'Просмотр';
   } else if (mode === 'edit') {
-    const item = items.find(i => i.id === targetId);
+    const item = findItem(targetId);
     input1.value = item ? item.line1 : '';
     input2.value = item?.line2 || '';
     modalTitle.textContent = 'Редактировать';
@@ -794,17 +793,17 @@ function confirmModal() {
   const l2 = input2.value.trim();
 
   if (modalMode === 'edit') {
-    const item = items.find(i => i.id === modalTargetId);
+    const item = findItem(modalTargetId);
     if (item) { item.line1 = l1; item.line2 = l2 || undefined; }
     render();
     closeModal();
     showToast('Сохранено');
   } else if (modalMode === 'nest') {
-    const pIdx = items.findIndex(i => i.id === modalTargetId);
-    const pLevel = pIdx >= 0 ? (items[pIdx].level || 0) : 0;
-    let ins = pIdx + 1;
-    while (ins < items.length && (items[ins].level || 0) > pLevel) ins++;
-    items.splice(ins, 0, { id: nextId++, line1: l1, line2: l2 || undefined, level: pLevel + 1 });
+    const parent = findItem(modalTargetId);
+    if (parent) {
+      if (!parent.children) parent.children = [];
+      parent.children.push({ id: nextId++, line1: l1, line2: l2 || undefined });
+    }
     render();
     closeModal();
     showToast('Добавлен вложенный');
