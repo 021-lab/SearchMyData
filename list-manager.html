@@ -4,271 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Список</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #f0f2f5;
-    min-height: 100vh;
-    overscroll-behavior: none;
-    user-select: none;
-    -webkit-user-select: none;
-  }
-
-  input, textarea { user-select: text; -webkit-user-select: text; }
-
-  header {
-    background: #fff;
-    padding: 16px 20px 12px;
-    border-bottom: 1px solid #e0e0e0;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .header-text { flex: 1; min-width: 0; }
-  header h1 { font-size: 20px; font-weight: 700; color: #1a1a2e; }
-
-  .hint {
-    font-size: 11px; color: #999; margin-top: 6px;
-    display: flex; gap: 10px; flex-wrap: wrap;
-  }
-  .hint span { display: flex; align-items: center; gap: 4px; }
-  .hint .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-
-  /* ── PTT button ── */
-  #ptt-btn {
-    flex-shrink: 0;
-    width: 33vw; height: 46px;
-    border-radius: 23px;
-    border: none;
-    background: #f0f0f0;
-    color: #555;
-    font-size: 18px;
-    font-weight: 600;
-    font-family: inherit;
-    display: flex; align-items: center; justify-content: center; gap: 6px;
-    cursor: pointer;
-    transition: background 0.15s, transform 0.1s, box-shadow 0.15s, color 0.15s;
-    touch-action: none;
-    -webkit-tap-highlight-color: transparent;
-  }
-  #ptt-btn:active { transform: scale(0.96); }
-  #ptt-btn.recording {
-    background: #ff3b30;
-    color: #fff;
-    box-shadow: 0 0 0 0 rgba(255,59,48,0.5);
-    animation: ptt-pulse 1s ease-out infinite;
-  }
-  #ptt-btn.sending {
-    background: #ff9500;
-    color: #fff;
-  }
-  #ptt-label { font-size: 13px; }
-  @keyframes ptt-pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(255,59,48,0.5); }
-    70%  { box-shadow: 0 0 0 14px rgba(255,59,48,0); }
-    100% { box-shadow: 0 0 0 0 rgba(255,59,48,0); }
-  }
-
-  #list-container { padding: 12px 0; position: relative; }
-
-  /* ── Swipe action bg ── */
-  .list-item-wrapper {
-    position: relative;
-    overflow: hidden;
-    margin-bottom: 1px;
-  }
-  .list-item-wrapper.is-dragging { overflow: visible; z-index: 50; }
-
-  .action-bg {
-    position: absolute; top: 0; right: 0; bottom: 0;
-    display: flex; align-items: center; justify-content: flex-end;
-    padding-right: 20px; min-width: 80px;
-    font-size: 13px; font-weight: 600; color: #fff;
-    pointer-events: none; opacity: 0; transition: opacity 0.1s;
-  }
-  .action-bg .action-icon { font-size: 20px; }
-  .action-bg .action-label { margin-left: 6px; }
-  .action-bg.up   { background: #34c759; }
-  .action-bg.down { background: #007aff; }
-  .action-bg.del  { background: #ff3b30; }
-
-  /* ── List item ── */
-  .list-item {
-    background: #fff;
-    padding: 14px 16px;
-    display: flex; flex-direction: column; gap: 4px;
-    border-bottom: 1px solid #f0f0f0;
-    position: relative;
-    will-change: transform;
-    user-select: none;
-    touch-action: pan-y;
-    transition: box-shadow 0.15s, border 0.15s, background 0.15s;
-  }
-  .list-item-wrapper:first-child .list-item { border-top: none; }
-
-  /* Long-press indicator */
-  .list-item.pressing {
-    background: #f5f8ff;
-  }
-
-  /* Boundary markers (visible during drag) */
-  .boundary-top .list-item    { border-top: 3px solid #ff9500 !important; }
-  .boundary-bottom .list-item { border-bottom: 3px solid #34c759 !important; }
-
-  /* Dragging state */
-  .list-item-wrapper.is-dragging .list-item {
-    box-shadow: 0 8px 28px rgba(0,122,255,0.22), 0 2px 8px rgba(0,0,0,0.1);
-    border: 2px solid #007aff;
-    border-radius: 10px;
-    background: #f8fbff;
-    touch-action: none;
-  }
-
-  .item-line1 {
-    font-size: 16px; font-weight: 600; color: #1a1a2e;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .item-line2 {
-    font-size: 13px; color: #888;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .item-index {
-    position: absolute; right: 14px; top: 50%;
-    transform: translateY(-50%);
-    font-size: 12px; color: #ccc; font-weight: 500;
-  }
-
-  /* ── Toast ── */
-  .toast {
-    position: fixed; bottom: 30px; left: 50%;
-    transform: translateX(-50%) translateY(20px);
-    background: rgba(30,30,30,0.88); color: #fff;
-    padding: 10px 20px; border-radius: 24px;
-    font-size: 14px; font-weight: 500;
-    opacity: 0; transition: opacity 0.2s, transform 0.2s;
-    pointer-events: none; white-space: nowrap;
-    z-index: 999; backdrop-filter: blur(4px);
-  }
-  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-  /* ── Diagnostic panel ── */
-  #diag-panel {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    background: rgba(15,15,20,0.93);
-    color: #e0e0e0;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 11px;
-    max-height: 38px;
-    overflow: hidden;
-    z-index: 300;
-    transition: max-height 0.25s ease;
-    backdrop-filter: blur(6px);
-    border-top: 1px solid rgba(255,255,255,0.08);
-  }
-  #diag-panel.expanded { max-height: 220px; }
-  #diag-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px; cursor: pointer; user-select: none;
-    height: 38px;
-  }
-  #diag-title { color: #888; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
-  #diag-status { font-size: 11px; }
-  #diag-toggle { color: #555; font-size: 14px; transition: transform 0.2s; }
-  #diag-panel.expanded #diag-toggle { transform: rotate(180deg); }
-.diag-btn {
-    flex-shrink: 0; background: rgba(255,255,255,0.08); border: none;
-    border-radius: 6px; color: #aaa; font-size: 10px; padding: 5px 8px;
-    cursor: pointer; font-family: inherit; white-space: nowrap;
-  }
-  .diag-btn:active { background: rgba(255,255,255,0.15); }
-  #diag-log-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 14px 4px;
-  }
-  #diag-log-label { color: #444; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
-  #diag-log {
-    padding: 0 14px 10px;
-    overflow-y: auto;
-    max-height: 148px;
-    display: flex; flex-direction: column; gap: 3px;
-  }
-  .diag-entry {
-    display: flex; gap: 8px; align-items: baseline; line-height: 1.5;
-  }
-  .diag-time { color: #555; flex-shrink: 0; font-size: 10px; }
-  .diag-msg  { flex: 1; word-break: break-all; }
-  .diag-info    { color: #8bb4e8; }
-  .diag-success { color: #4cd964; }
-  .diag-error   { color: #ff6b6b; }
-  .diag-warn    { color: #ffcc00; }
-
-  /* ── Empty state ── */
-  .empty-state { text-align: center; padding: 60px 20px; color: #bbb; }
-  .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
-  .empty-state p { font-size: 15px; }
-
-  /* ── FAB ── */
-  .add-btn {
-    position: fixed; bottom: 28px; right: 20px;
-    width: 56px; height: 56px; border-radius: 50%;
-    background: #007aff; color: #fff; border: none;
-    font-size: 28px; cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0,122,255,0.4);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 200; transition: transform 0.1s, background 0.1s;
-  }
-  .add-btn:active { transform: scale(0.92); background: #005fcb; }
-
-  /* ── Modal ── */
-  .modal-overlay {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.4);
-    display: flex; align-items: flex-end;
-    z-index: 500; opacity: 0; pointer-events: none;
-    transition: opacity 0.2s;
-  }
-  .modal-overlay.open { opacity: 1; pointer-events: all; }
-  .modal {
-    background: #fff; width: 100%;
-    border-radius: 20px 20px 0 0; padding: 20px 20px 36px;
-    transform: translateY(100%);
-    transition: transform 0.25s cubic-bezier(.4,0,.2,1);
-  }
-  .modal-overlay.open .modal { transform: translateY(0); }
-  .modal h2 { font-size: 17px; font-weight: 700; margin-bottom: 16px; color: #1a1a2e; }
-  .modal input {
-    width: 100%; border: 1.5px solid #e0e0e0; border-radius: 10px;
-    padding: 12px 14px; font-size: 15px; margin-bottom: 10px;
-    outline: none; color: #1a1a2e; transition: border-color 0.15s;
-  }
-  .modal input:focus { border-color: #007aff; }
-  .modal-actions { display: flex; gap: 10px; margin-top: 6px; }
-  .btn { flex: 1; padding: 13px; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
-  .btn-cancel { background: #f0f0f0; color: #555; }
-  .btn-add { background: #007aff; color: #fff; }
-  .btn-add:active { background: #005fcb; }
-  .btn-cancel:active { background: #e0e0e0; }
-</style>
+<link rel="stylesheet" href="list-manager.css">
 </head>
 <body>
 
 <header>
-  <div class="header-text">
-    <h1>Мой список</h1>
-    <div class="hint">
-      <span><span class="dot" style="background:#ff3b30"></span>Влево — удалить</span>
-      <span><span class="dot" style="background:#34c759"></span>Влево↑ — вверх</span>
-      <span><span class="dot" style="background:#007aff"></span>Влево↓ — вниз</span>
-      <span><span class="dot" style="background:#af52de"></span>Удержать — перетащить</span>
-    </div>
-  </div>
+  <button id="undo-btn" disabled title="Отменить перетаскивание">↩</button>
+  <h1>Мой список</h1>
   <button id="ptt-btn" title="Удержи для записи голоса">🎤<span id="ptt-label">Голос</span></button>
 </header>
 
@@ -289,9 +31,23 @@
   <div id="diag-log"></div>
 </div>
 
+<div id="tag-panel"></div>
+
+<div id="drop-zone-panel">
+  <div class="panel-item" data-action="nest"   style="background:#34c759"><span class="panel-icon">➕</span><span class="panel-label">Вложенный</span></div>
+  <div class="panel-item" data-action="view"   style="background:#5ac8fa"><span class="panel-icon">👁</span><span class="panel-label">Просмотр</span></div>
+  <div class="panel-item" data-action="edit"   style="background:#007aff"><span class="panel-icon">✏️</span><span class="panel-label">Изменить</span></div>
+  <div class="panel-item" data-action="delete" style="background:#ff3b30"><span class="panel-icon">🗑</span><span class="panel-label">Удалить</span></div>
+</div>
+
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
-    <h2>Новый элемент</h2>
+    <h2 id="modal-title">Новый элемент</h2>
+    <div id="modal-view-content" style="display:none; margin-bottom:12px;">
+      <div id="view-line1" style="font-size:17px; font-weight:600; color:#1a1a2e; margin-bottom:5px;"></div>
+      <div id="view-line2" style="font-size:14px; color:#888; margin-bottom:8px;"></div>
+      <div id="view-tags" class="item-tags"></div>
+    </div>
     <input type="text" id="input-line1" placeholder="Название (обязательно)" maxlength="60">
     <input type="text" id="input-line2" placeholder="Подпись (необязательно)" maxlength="80">
     <div class="modal-actions">
@@ -301,41 +57,20 @@
   </div>
 </div>
 
+<script src="list-data.js"></script>
 <script>
 'use strict';
 
-// ─── Data ────────────────────────────────────────────────────────────────────
-let items = [
-  { id:  1, line1: 'Молоко 3.2%',           line2: '2 пакета, магазин у дома' },
-  { id:  2, line1: 'Хлеб ржаной' },
-  { id:  3, line1: 'Яблоки',                line2: 'Голден, ~1.5 кг' },
-  { id:  4, line1: 'Кофе',                  line2: 'Арабика, зерно, 250 г' },
-  { id:  5, line1: 'Зубная паста' },
-  { id:  6, line1: 'Шампунь',               line2: 'Для нормальных волос' },
-  { id:  7, line1: 'Стиральный порошок',    line2: 'Автомат, 3 кг' },
-  { id:  8, line1: 'Батарейки AA',          line2: '4 штуки' },
-  { id:  9, line1: 'Сыр Гауда',             line2: '200 г, нарезка' },
-  { id: 10, line1: 'Яйца',                  line2: '10 штук, C1' },
-  { id: 11, line1: 'Масло сливочное',       line2: '82.5%, 200 г' },
-  { id: 12, line1: 'Греческий йогурт',      line2: '0%, 500 г' },
-  { id: 13, line1: 'Помидоры',              line2: '1 кг, черри' },
-  { id: 14, line1: 'Огурцы',                line2: '500 г' },
-  { id: 15, line1: 'Куриное филе',          line2: '1 кг, охлаждённое' },
-  { id: 16, line1: 'Макароны',              line2: 'Спагетти, 400 г' },
-  { id: 17, line1: 'Томатная паста',        line2: '2 банки по 140 г' },
-  { id: 18, line1: 'Оливковое масло',       line2: 'Extra Virgin, 500 мл' },
-  { id: 19, line1: 'Чай зелёный',           line2: '25 пакетиков' },
-  { id: 20, line1: 'Бананы',                line2: '1 кг' },
-  { id: 21, line1: 'Апельсины',             line2: '1.5 кг' },
-  { id: 22, line1: 'Туалетная бумага',      line2: '12 рулонов' },
-  { id: 23, line1: 'Мыло жидкое',           line2: 'Антибактериальное, 500 мл' },
-  { id: 24, line1: 'Сахар',                 line2: '1 кг, белый' },
-  { id: 25, line1: 'Соль',                  line2: 'Морская, мелкая, 500 г' },
-];
-let nextId = 26;
-
 // ─── Render ──────────────────────────────────────────────────────────────────
 const container = document.getElementById('list-container');
+
+function applyItemIndent(wrapper, level) {
+  const el = wrapper.querySelector('.list-item');
+  wrapper.style.marginLeft = (level * 24) + 'px';
+  el.classList.remove('nested');
+  el.style.borderLeftColor = '';
+  el.style.paddingLeft = '';
+}
 
 function render() {
   container.innerHTML = '';
@@ -343,10 +78,18 @@ function render() {
     container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>Список пуст. Нажмите + чтобы добавить.</p></div>`;
     return;
   }
+  let collapsedAt = Infinity;
   items.forEach((item, idx) => {
+    const level = item.level || 0;
+    const hidden = level > collapsedAt;
+    if (!hidden) collapsedAt = item.collapsed ? level : Infinity;
+
+    const hasChildren = idx < items.length - 1 && (items[idx + 1].level || 0) > level;
+
     const wrapper = document.createElement('div');
     wrapper.className = 'list-item-wrapper';
     wrapper.dataset.id = item.id;
+    if (hidden) wrapper.style.display = 'none';
 
     const actionBg = document.createElement('div');
     actionBg.className = 'action-bg del';
@@ -354,21 +97,52 @@ function render() {
 
     const el = document.createElement('div');
     el.className = 'list-item';
+    const chevron = hasChildren ? `<span class="chevron">${item.collapsed ? '▶' : '▼'}</span>` : '';
     el.innerHTML = `
-      <div class="item-line1">${escHtml(item.line1)}</div>
+      <div class="item-line1">${chevron}${escHtml(item.line1)}</div>
       ${item.line2 ? `<div class="item-line2">${escHtml(item.line2)}</div>` : ''}
+      ${item.tags?.length ? `<div class="item-tags">${item.tags.map(t => `<span class="item-tag">${escHtml(t)}</span>`).join('')}</div>` : ''}
       <div class="item-index">${idx + 1}</div>
     `;
 
     wrapper.appendChild(actionBg);
     wrapper.appendChild(el);
     container.appendChild(wrapper);
+    applyItemIndent(wrapper, level);
     bindGesture(el, actionBg, item.id, wrapper);
   });
 }
 
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Undo ────────────────────────────────────────────────────────────────────
+let undoSnapshot = null;
+const undoBtn = document.getElementById('undo-btn');
+
+undoBtn.addEventListener('click', () => {
+  if (!undoSnapshot) return;
+  items = undoSnapshot;
+  undoSnapshot = null;
+  render();
+  undoBtn.disabled = true;
+  showToast('Отменено');
+});
+
+function saveUndoSnapshot() {
+  undoSnapshot = items.map(i => ({ ...i }));
+  undoBtn.disabled = false;
+}
+
+function toggleCollapse(itemId) {
+  const idx = items.findIndex(i => i.id === itemId);
+  if (idx < 0) return;
+  const item = items[idx];
+  const hasChildren = idx < items.length - 1 && (items[idx + 1].level || 0) > (item.level || 0);
+  if (!hasChildren) return;
+  item.collapsed = !item.collapsed;
+  render();
 }
 
 // ─── Drag (long press) ───────────────────────────────────────────────────────
@@ -394,7 +168,7 @@ function clearBoundaryMarkers() {
 document.addEventListener('touchmove', e => {
   if (!dragState) return;
   e.preventDefault();
-  updateDrag(e.touches[0].clientY);
+  updateDrag(e.touches[0].clientY, e.touches[0].clientX);
 }, { passive: false });
 
 document.addEventListener('touchend', () => {
@@ -405,44 +179,108 @@ document.addEventListener('touchcancel', () => {
   if (dragState) finalizeDrag();
 }, { passive: true });
 
-function startDrag(wrapper, clientY) {
+function startDrag(wrapper, clientY, clientX) {
+  saveUndoSnapshot();
   if (navigator.vibrate) navigator.vibrate(30);
   const listItem = wrapper.querySelector('.list-item');
   listItem.classList.remove('pressing');
   listItem.style.transition = 'none';
   wrapper.classList.add('is-dragging');
-  dragState = { wrapper, lastClientY: clientY, offsetY: 0 };
+
+  // Collect group: all items with higher level immediately following parent
+  const allWrappers = [...container.querySelectorAll('.list-item-wrapper')];
+  const startIdx = allWrappers.indexOf(wrapper);
+  const parentItem = items.find(i => i.id === +wrapper.dataset.id);
+  const baseLevel = parentItem?.level || 0;
+  const children = [];
+  for (let i = startIdx + 1; i < allWrappers.length; i++) {
+    const childItem = items.find(it => it.id === +allWrappers[i].dataset.id);
+    if ((childItem?.level || 0) <= baseLevel) break;
+    children.push(allWrappers[i]);
+  }
+
+  dragState = { wrapper, lastClientY: clientY, offsetY: 0, nestBaseX: clientX, children };
+
+  // Collapse children visually during drag
+  for (const child of children) child.style.display = 'none';
+
   startAutoScroll();
 }
 
-function updateDrag(clientY) {
+// Apply parent's offsetY to all group children so they visually follow
+function syncChildTransforms() {
+  if (!dragState?.children?.length) return;
+  const t = `translateY(${dragState.offsetY}px)`;
+  for (const child of dragState.children) child.style.transform = t;
+}
+
+const NEST_THRESHOLD = 36;
+
+function updateDrag(clientY, clientX) {
   const { wrapper } = dragState;
   dragState.offsetY += (clientY - dragState.lastClientY) * 2;
   dragState.lastClientY = clientY;
   wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
   clampToBoundary();
   checkSwap();
+  syncChildTransforms();
+  if (clientX !== undefined) {
+    detectRightShift(clientX);
+    updateDraggedLevel();
+  }
+}
+
+// Detect a right shift gesture during drag — sets rightShifted flag once
+function detectRightShift(clientX) {
+  if (dragState.nestBaseX === undefined) { dragState.nestBaseX = clientX; return; }
+  const dx = clientX - dragState.nestBaseX;
+  if (dx > NEST_THRESHOLD && !dragState.rightShifted) {
+    dragState.rightShifted = true;
+    dragState.nestBaseX = clientX;
+    if (navigator.vibrate) navigator.vibrate(10);
+  }
+}
+
+// Recompute and apply visual level of dragged item based on item above + shift flag
+function updateDraggedLevel() {
+  const { wrapper } = dragState;
+  const all = [...container.querySelectorAll('.list-item-wrapper')];
+  const idx = all.indexOf(wrapper);
+  let newLevel = 0;
+  if (idx > 0) {
+    const aboveId  = +all[idx - 1].dataset.id;
+    const aboveItem = items.find(i => i.id === aboveId);
+    const aboveLevel = aboveItem ? (aboveItem.level || 0) : 0;
+    newLevel = dragState.rightShifted ? aboveLevel + 1 : aboveLevel;
+  }
+  dragState.pendingLevel = newLevel;
+  applyItemIndent(wrapper, newLevel);
 }
 
 function checkSwap() {
-  const { wrapper } = dragState;
+  const { wrapper, children } = dragState;
   const all = [...container.querySelectorAll('.list-item-wrapper')];
   const idx = all.indexOf(wrapper);
   const dragRect = wrapper.getBoundingClientRect();
   const mid = dragRect.top + dragRect.height / 2;
 
+  // ── Swap UP: move group before prev ──────────────────────────────────────
   if (idx > 0) {
     const prev = all[idx - 1];
     const pr = prev.getBoundingClientRect();
     if (mid < pr.top + pr.height / 2) {
       container.insertBefore(wrapper, prev);
+      for (const child of children) container.insertBefore(child, prev);
       dragState.offsetY += pr.height + 1;
       wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
       return;
     }
   }
-  if (idx < all.length - 1) {
-    const next = all[idx + 1];
+
+  // ── Swap DOWN: item after group jumps above parent ────────────────────────
+  const groupEnd = idx + children.length;
+  if (groupEnd < all.length - 1) {
+    const next = all[groupEnd + 1];
     const nr = next.getBoundingClientRect();
     if (mid > nr.top + nr.height / 2) {
       container.insertBefore(next, wrapper);
@@ -500,8 +338,11 @@ function autoScrollStep() {
   const vh = window.innerHeight;
   const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
 
-  // All list items except the dragged one, in DOM order
-  const all = [...container.querySelectorAll('.list-item-wrapper')].filter(w => w !== wrapper);
+  const { children } = dragState;
+
+  // All list items except the dragged group, in DOM order
+  const all = [...container.querySelectorAll('.list-item-wrapper')]
+    .filter(w => w !== wrapper && !children.includes(w));
 
   // Boundary markers: first/last visible items
   const visible = all.filter(w => { const r = w.getBoundingClientRect(); return r.bottom > headerBottom && r.top < vh; });
@@ -509,14 +350,14 @@ function autoScrollStep() {
 
   const dragRect = wrapper.getBoundingClientRect();
 
-  // DOM order including dragged item
+  // DOM order including dragged group
   const allWithDragged = [...container.querySelectorAll('.list-item-wrapper')];
-  const draggedIsFirst = allWithDragged[0] === wrapper;
-  const draggedIsLast  = allWithDragged[allWithDragged.length - 1] === wrapper;
+  const parentIdx   = allWithDragged.indexOf(wrapper);
+  const draggedIsFirst = parentIdx === 0;
+  const draggedIsLast  = parentIdx + children.length === allWithDragged.length - 1;
 
   // ── Scroll UP ──────────────────────────────────────────────────────────────
   if (dragRect.top < headerBottom) {
-    // Stop as soon as dragged has swapped to first position — nowhere left to go
     if (!draggedIsFirst) {
       const speed = -Math.min((headerBottom - dragRect.top) / 5 + 2, MAX_SCROLL);
       window.scrollBy(0, speed);
@@ -524,11 +365,12 @@ function autoScrollStep() {
       wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
       clampToBoundary();
       checkSwap();
+      syncChildTransforms();
+      updateDraggedLevel();
     }
 
   // ── Scroll DOWN ────────────────────────────────────────────────────────────
   } else if (dragRect.bottom > vh) {
-    // Stop as soon as dragged has swapped to last position — nowhere left to go
     if (!draggedIsLast) {
       const speed = Math.min((dragRect.bottom - vh) / 5 + 2, MAX_SCROLL);
       window.scrollBy(0, speed);
@@ -536,6 +378,8 @@ function autoScrollStep() {
       wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
       clampToBoundary();
       checkSwap();
+      syncChildTransforms();
+      updateDraggedLevel();
     }
   }
 
@@ -545,24 +389,141 @@ function autoScrollStep() {
 function finalizeDrag() {
   stopAutoScroll();
   clearBoundaryMarkers();
-  const { wrapper } = dragState;
+  const { wrapper, pendingLevel, rightShifted, children } = dragState;
   dragState = null;
+
+  // If no right shift: correct position when group is between items of different levels.
+  if (!rightShifted) {
+    const all = [...container.querySelectorAll('.list-item-wrapper')];
+    const idx = all.indexOf(wrapper);
+    const groupEnd = idx + children.length;
+    if (idx > 0 && groupEnd < all.length - 1) {
+      const aboveItem = items.find(i => i.id === +all[idx - 1].dataset.id);
+      const belowItem = items.find(i => i.id === +all[groupEnd + 1].dataset.id);
+      if ((belowItem?.level || 0) > (aboveItem?.level || 0)) {
+        const aboveWrapper = all[idx - 1];
+        container.insertBefore(wrapper, aboveWrapper);
+        for (const child of children) container.insertBefore(child, aboveWrapper);
+      }
+    }
+  }
+
+  // Commit the pending nesting level to the parent, propagate delta to children.
+  if (pendingLevel !== undefined) {
+    const itemId = +wrapper.dataset.id;
+    const parentItem = items.find(i => i.id === itemId);
+    if (parentItem) {
+      const delta = pendingLevel - (parentItem.level || 0);
+      parentItem.level = pendingLevel;
+      applyItemIndent(wrapper, pendingLevel);
+      // Apply the same delta to every child so relative indents are preserved
+      for (const child of children) {
+        const childItem = items.find(i => i.id === +child.dataset.id);
+        if (childItem) {
+          childItem.level = Math.max(0, (childItem.level || 0) + delta);
+          applyItemIndent(child, childItem.level);
+        }
+      }
+    }
+  }
 
   const listItem = wrapper.querySelector('.list-item');
   listItem.style.transition = '';
   wrapper.style.transition = 'transform 0.22s cubic-bezier(.4,0,.2,1)';
   wrapper.style.transform = '';
+  for (const child of children) {
+    child.style.transition = 'transform 0.22s cubic-bezier(.4,0,.2,1)';
+    child.style.transform = '';
+  }
 
   setTimeout(() => {
     wrapper.style.transition = '';
     wrapper.classList.remove('is-dragging');
     const wrappers = [...container.querySelectorAll('.list-item-wrapper')];
     items = wrappers.map(w => items.find(it => it.id === +w.dataset.id)).filter(Boolean);
-    wrappers.forEach((w, i) => {
-      const idx = w.querySelector('.item-index');
-      if (idx) idx.textContent = i + 1;
-    });
+    render();
   }, 220);
+}
+
+// ─── Side panels (unified) ────────────────────────────────────────────────────
+const dropPanel = document.getElementById('drop-zone-panel');
+const tagPanel  = document.getElementById('tag-panel');
+let dropAction  = null;
+let tagAction   = null;
+
+const ITEM_H        = 60;
+const AVAILABLE_TAGS = ['Важное', 'Срочно', 'Купить', 'Дом', 'Работа', 'Отложить'];
+
+function showPanel(panelEl, anchorY) {
+  const count  = panelEl.querySelectorAll('.panel-item').length;
+  const totalH = count * ITEM_H;
+  const top    = Math.max(0, Math.min(anchorY - totalH / 2, window.innerHeight - totalH));
+  panelEl.style.top   = top + 'px';
+  panelEl._anchorY    = anchorY;
+  panelEl.classList.add('visible');
+}
+
+function setActiveItem(panelEl, dy) {
+  const panelItems = [...panelEl.querySelectorAll('.panel-item')];
+  if (!panelItems.length) return null;
+  const top = parseFloat(panelEl.style.top);
+  const idx = Math.max(0, Math.min(panelItems.length - 1,
+    Math.floor((panelEl._anchorY + dy - top) / ITEM_H)));
+  panelItems.forEach((it, i) => it.classList.toggle('active', i === idx));
+  return panelItems[idx]?.dataset.action || null;
+}
+
+function hidePanel(panelEl) {
+  panelEl.classList.remove('visible');
+  panelEl.querySelectorAll('.panel-item').forEach(it => it.classList.remove('active'));
+}
+
+function showDropPanel(anchorY) {
+  showPanel(dropPanel, anchorY);
+  dropAction = setActiveItem(dropPanel, 0);
+}
+
+function hideDrop() { hidePanel(dropPanel); dropAction = null; }
+
+function showTagPanel(anchorY, itemId) {
+  const item     = items.find(i => i.id === itemId);
+  const itemTags = item?.tags || [];
+  const notApplied = AVAILABLE_TAGS.filter(t => !itemTags.includes(t));
+  const applied    = AVAILABLE_TAGS.filter(t =>  itemTags.includes(t));
+
+  tagPanel.innerHTML = '';
+  [...notApplied, ...applied].forEach(tag => {
+    const isApplied = itemTags.includes(tag);
+    const div = document.createElement('div');
+    div.className = 'panel-item';
+    div.style.background = isApplied ? '#636366' : '#5856d6';
+    div.dataset.action = tag;
+    div.innerHTML = `<span class="panel-icon">${isApplied ? '−' : '#'}</span><span class="panel-label">${escHtml(tag)}</span>`;
+    tagPanel.appendChild(div);
+  });
+
+  showPanel(tagPanel, anchorY);
+  tagAction = setActiveItem(tagPanel, 0);
+}
+
+function hideTagPanel() { hidePanel(tagPanel); tagAction = null; }
+
+function execDrop(action, itemId, wrapper) {
+  if (action === 'delete')    doDelete(itemId, wrapper);
+  else if (action === 'edit') openModal('edit', itemId);
+  else if (action === 'nest') openModal('nest', itemId);
+  else if (action === 'view') openModal('view', itemId);
+}
+
+function execTag(tag, itemId) {
+  if (!tag) return;
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+  if (!item.tags) item.tags = [];
+  const idx = item.tags.indexOf(tag);
+  if (idx >= 0) { item.tags.splice(idx, 1); showToast(`«${tag}» убран`); }
+  else          { item.tags.push(tag);       showToast(`«${tag}» добавлен`); }
+  render();
 }
 
 // ─── Swipe gesture ───────────────────────────────────────────────────────────
@@ -572,23 +533,28 @@ const DELETE_PX = 120;
 
 function bindGesture(el, actionBg, itemId, wrapper) {
   let startX, startY, curX, curY, active = false, longTimer = null, lockedH = false;
+  let rdAnchor = null, ldAnchor = null;
 
   el.addEventListener('touchstart', e => {
-    if (dragState) return;
+    if (dragState || modalOpen) return;
     const t = e.touches[0];
     startX = curX = t.clientX;
     startY = curY = t.clientY;
     active = true;
     lockedH = false;
+    rdAnchor = null;
+    ldAnchor = null;
     el.style.transition = 'none';
     el.classList.add('pressing');
 
     longTimer = setTimeout(() => {
       longTimer = null;
       active = false;
+      rdAnchor = null;
+      hideDrop();
       el.style.transform = '';
       actionBg.style.opacity = '0';
-      startDrag(wrapper, curY);
+      startDrag(wrapper, curY, curX);
     }, 370);
   }, { passive: true });
 
@@ -623,38 +589,64 @@ function bindGesture(el, actionBg, itemId, wrapper) {
       }
     }
 
-    if (dx >= 0) {
-      el.style.transform = '';
+    e.preventDefault();
+
+    const thresh = window.innerWidth * 0.20;
+    const oy     = curY - startY;
+
+    // ── Right panel ────────────────────────────────────────────────────────
+    if (rdAnchor !== null || (ldAnchor === null && dx > thresh)) {
+      if (rdAnchor !== null && dx < thresh) {
+        hideDrop(); rdAnchor = null;
+        el.style.transform = `translate(0px, ${oy}px)`;
+        return;
+      }
+      if (!rdAnchor) {
+        rdAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2;
+        showDropPanel(rdAnchor);
+      }
+      el.style.transform = `translate(${Math.min(dx, 110)}px, ${oy}px)`;
       actionBg.style.opacity = '0';
-      actionBg.className = 'action-bg del';
+      dropAction = setActiveItem(dropPanel, oy);
       return;
     }
 
-    e.preventDefault();
-    const absDx = Math.abs(dx);
-    const progress = Math.min(absDx / DELETE_PX, 1);
-
-    if (absDx > SWIPE_H) {
-      if (dy < -SWIPE_V) {
-        actionBg.className = 'action-bg up';
-        actionBg.innerHTML = `<span class="action-icon">⬆️</span><span class="action-label">Вверх</span>`;
-      } else if (dy > SWIPE_V) {
-        actionBg.className = 'action-bg down';
-        actionBg.innerHTML = `<span class="action-icon">⬇️</span><span class="action-label">Вниз</span>`;
-      } else {
-        actionBg.className = 'action-bg del';
-        actionBg.innerHTML = `<span class="action-icon">🗑</span><span class="action-label">Удалить</span>`;
+    // ── Left panel ─────────────────────────────────────────────────────────
+    if (ldAnchor !== null || dx < -thresh) {
+      if (ldAnchor !== null && dx > -thresh) {
+        hideTagPanel(); ldAnchor = null;
+        el.style.transform = `translate(0px, ${oy}px)`;
+        return;
       }
+      if (!ldAnchor) {
+        ldAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2;
+        showTagPanel(ldAnchor, itemId);
+      }
+      el.style.transform = `translate(${Math.max(dx, -110)}px, ${oy}px)`;
+      actionBg.style.opacity = '0';
+      tagAction = setActiveItem(tagPanel, oy);
+      return;
     }
 
-    el.style.transform = `translateX(${dx}px)`;
-    actionBg.style.opacity = Math.min(progress * 1.5, 1).toString();
+    // ── Neutral zone — no panel, element follows finger ────────────────────
+    el.style.transform = `translate(${dx}px, ${oy}px)`;
+    actionBg.style.opacity = '0';
   }, { passive: false });
 
   const onEnd = () => {
     clearTimeout(longTimer);
     longTimer = null;
     el.classList.remove('pressing');
+
+    const act            = dropAction;
+    const wasRight       = !!rdAnchor;
+    const wasLeft        = !!ldAnchor;
+    const savedTagAction = tagAction;
+    rdAnchor = null;
+    ldAnchor = null;
+    hideDrop();
+    hideTagPanel();
+
     if (dragState || !active) return;
     active = false;
 
@@ -665,10 +657,12 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     el.style.transform = '';
     actionBg.style.opacity = '0';
 
-    if (dx < -SWIPE_H) {
-      if (dy < -SWIPE_V)      doMoveUp(itemId);
-      else if (dy > SWIPE_V)  doMoveDown(itemId);
-      else                     doDelete(itemId, wrapper);
+    if (wasRight && dx > 30 && act) {
+      execDrop(act, itemId, wrapper);
+    } else if (wasLeft && dx < -30 && savedTagAction) {
+      execTag(savedTagAction, itemId);
+    } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+      toggleCollapse(itemId);
     }
   };
 
@@ -719,34 +713,114 @@ function showToast(msg) {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
 }
 
-// ─── Add item modal ───────────────────────────────────────────────────────────
-const overlay = document.getElementById('modal-overlay');
-const input1  = document.getElementById('input-line1');
-const input2  = document.getElementById('input-line2');
+// ─── Modal (add / edit / nest) ────────────────────────────────────────────────
+const overlay       = document.getElementById('modal-overlay');
+const input1        = document.getElementById('input-line1');
+const input2        = document.getElementById('input-line2');
+const modalTitle    = document.getElementById('modal-title');
+const btnConfirm    = document.getElementById('btn-confirm');
+const btnCancel     = document.getElementById('btn-cancel');
+const viewContent   = document.getElementById('modal-view-content');
+const viewLine1     = document.getElementById('view-line1');
+const viewLine2     = document.getElementById('view-line2');
+const viewTagsEl    = document.getElementById('view-tags');
 
-document.getElementById('add-btn').addEventListener('click', () => {
-  input1.value = ''; input2.value = '';
+let modalMode     = 'add';
+let modalTargetId = null;
+let modalOpen     = false;
+
+function openModal(mode, targetId) {
+  modalMode     = mode || 'add';
+  modalTargetId = targetId || null;
+  modalOpen     = true;
+
+  // Reset to edit layout by default
+  viewContent.style.display  = 'none';
+  input1.style.display       = '';
+  input2.style.display       = '';
+  btnConfirm.style.display   = '';
+  btnCancel.textContent      = 'Отмена';
+  input1.style.borderColor   = '';
+
+  if (mode === 'view') {
+    const item = items.find(i => i.id === targetId);
+    viewLine1.textContent      = item?.line1 || '';
+    viewLine2.textContent      = item?.line2 || '';
+    viewLine2.style.display    = item?.line2 ? '' : 'none';
+    viewTagsEl.innerHTML       = (item?.tags || []).map(t => `<span class="item-tag">${escHtml(t)}</span>`).join('');
+    viewTagsEl.style.display   = item?.tags?.length ? '' : 'none';
+    viewContent.style.display  = '';
+    input1.style.display       = 'none';
+    input2.style.display       = 'none';
+    btnConfirm.style.display   = 'none';
+    btnCancel.textContent      = 'Закрыть';
+    modalTitle.textContent     = 'Просмотр';
+  } else if (mode === 'edit') {
+    const item = items.find(i => i.id === targetId);
+    input1.value = item ? item.line1 : '';
+    input2.value = item?.line2 || '';
+    modalTitle.textContent = 'Редактировать';
+    btnConfirm.textContent = 'Сохранить';
+  } else if (mode === 'nest') {
+    input1.value = ''; input2.value = '';
+    modalTitle.textContent = 'Новый вложенный';
+    btnConfirm.textContent = 'Добавить';
+  } else {
+    input1.value = ''; input2.value = '';
+    modalTitle.textContent = 'Новый элемент';
+    btnConfirm.textContent = 'Добавить';
+  }
+
+  // Focus input BEFORE opening overlay — iOS only triggers keyboard
+  // within the original gesture; calling focus() first, while the input
+  // is in the DOM but under opacity:0, keeps it in the trusted context.
+  if (mode !== 'view') {
+    input1.readOnly = true;   // prevent keyboard flash before modal appears
+    input1.focus();
+    input1.readOnly = false;  // remove readonly so keyboard shows when modal opens
+  }
   overlay.classList.add('open');
-  setTimeout(() => input1.focus(), 300);
-});
+}
 
-document.getElementById('btn-cancel').addEventListener('click', closeModal);
-overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
-document.getElementById('btn-confirm').addEventListener('click', addItem);
-[input1, input2].forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') addItem(); }));
+function closeModal() {
+  overlay.classList.remove('open');
+  modalOpen = false;
+}
 
-function addItem() {
+function confirmModal() {
   const l1 = input1.value.trim();
   if (!l1) { input1.focus(); input1.style.borderColor = '#ff3b30'; return; }
   input1.style.borderColor = '';
   const l2 = input2.value.trim();
-  items.push({ id: nextId++, line1: l1, line2: l2 || undefined });
-  render();
-  closeModal();
-  showToast('Элемент добавлен');
+
+  if (modalMode === 'edit') {
+    const item = items.find(i => i.id === modalTargetId);
+    if (item) { item.line1 = l1; item.line2 = l2 || undefined; }
+    render();
+    closeModal();
+    showToast('Сохранено');
+  } else if (modalMode === 'nest') {
+    const pIdx = items.findIndex(i => i.id === modalTargetId);
+    const pLevel = pIdx >= 0 ? (items[pIdx].level || 0) : 0;
+    let ins = pIdx + 1;
+    while (ins < items.length && (items[ins].level || 0) > pLevel) ins++;
+    items.splice(ins, 0, { id: nextId++, line1: l1, line2: l2 || undefined, level: pLevel + 1 });
+    render();
+    closeModal();
+    showToast('Добавлен вложенный');
+  } else {
+    items.push({ id: nextId++, line1: l1, line2: l2 || undefined });
+    render();
+    closeModal();
+    showToast('Элемент добавлен');
+  }
 }
 
-function closeModal() { overlay.classList.remove('open'); }
+document.getElementById('add-btn').addEventListener('click', () => openModal('add'));
+document.getElementById('btn-cancel').addEventListener('click', closeModal);
+overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+btnConfirm.addEventListener('click', confirmModal);
+[input1, input2].forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') confirmModal(); }));
 
 // ─── Diagnostic panel ─────────────────────────────────────────────────────────
 const diagPanel  = document.getElementById('diag-panel');
