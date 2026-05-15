@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>list-manager — документация</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f5f7;
+    color: #1d1d1f;
+    line-height: 1.6;
+    padding: 32px 16px 64px;
+  }
+
+  .page { max-width: 760px; margin: 0 auto; }
+
+  h1 {
+    font-size: 28px; font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 4px;
+  }
+  .subtitle { font-size: 14px; color: #888; margin-bottom: 40px; }
+
+  h2 {
+    font-size: 13px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: #888;
+    margin: 40px 0 12px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    margin-bottom: 12px;
+  }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    text-align: left; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: #aaa;
+    padding: 10px 16px 8px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  td { padding: 10px 16px; border-bottom: 1px solid #f5f5f7; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { white-space: nowrap; }
+
+  .gesture  { color: #007aff; font-weight: 600; font-size: 13px; }
+  .field    { font-family: 'SF Mono', 'Fira Code', monospace; color: #e8366b; font-size: 12px; background: #fff0f4; padding: 2px 6px; border-radius: 5px; }
+  .type     { font-family: 'SF Mono', 'Fira Code', monospace; color: #888; font-size: 12px; }
+  .optional { color: #aaa; font-size: 12px; }
+
+  /* ── Code blocks ── */
+  .card pre {
+    font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+    font-size: 12.5px;
+    line-height: 1.7;
+    background: #1c1c1e;
+    color: #e5e5ea;
+    padding: 20px;
+    overflow-x: auto;
+    margin: 0;
+  }
+  .code-label {
+    font-size: 11px; font-weight: 600; color: #888;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 12px 16px 0;
+  }
+
+  /* syntax colours */
+  .kw  { color: #ff7ab2; }   /* keyword */
+  .fn  { color: #67b7a4; }   /* function name */
+  .str { color: #fc6a5d; }   /* string */
+  .cm  { color: #6c7986; font-style: italic; } /* comment */
+  .num { color: #d9c97c; }   /* number */
+  .id  { color: #cda869; }   /* identifier */
+
+  /* ── Section row ── */
+  .section-row {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f5f5f7;
+  }
+  .section-row:last-child { border-bottom: none; }
+  .section-key  { font-size: 14px; font-weight: 600; min-width: 160px; flex-shrink: 0; }
+  .section-val  { font-size: 13px; color: #555; }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    padding: 2px 7px; border-radius: 20px;
+    vertical-align: middle; margin-left: 4px;
+  }
+  .badge-blue   { background: #e8f0ff; color: #007aff; }
+  .badge-green  { background: #e4f9ed; color: #28a745; }
+  .badge-gray   { background: #f0f0f0; color: #888; }
+  .badge-red    { background: #fff0f0; color: #ff3b30; }
+  .badge-purple { background: #f0eeff; color: #5856d6; }
+
+  /* ── Divider within card ── */
+  .divider { height: 1px; background: #f0f0f0; margin: 0 16px; }
+
+  .note {
+    font-size: 12px; color: #888; padding: 10px 16px 12px;
+    border-top: 1px solid #f0f0f0;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>list-manager</h1>
+  <div class="subtitle">Документация кода · claude/edit-list-item</div>
+
+  <!-- ══ Файловая структура ══════════════════════════════════════════════ -->
+  <h2>Файловая структура</h2>
+  <div class="card">
+    <div class="section-row">
+      <div class="section-key">list-manager.html</div>
+      <div class="section-val">Разметка страницы + вся логика (JS)</div>
+    </div>
+    <div class="section-row">
+      <div class="section-key">list-manager.css</div>
+      <div class="section-val">Все стили, подключается через <code>&lt;link rel="stylesheet"&gt;</code></div>
+    </div>
+    <div class="section-row">
+      <div class="section-key">list-data.js</div>
+      <div class="section-val">Массив <code>items[]</code> и счётчик <code>nextId</code> — подключается через <code>&lt;script src&gt;</code> перед основным скриптом</div>
+    </div>
+  </div>
+
+  <!-- ══ Функциональность ════════════════════════════════════════════════ -->
+  <h2>Функциональность для пользователя</h2>
+  <div class="card">
+    <table>
+      <tr><th>Жест / действие</th><th>Результат</th></tr>
+      <tr>
+        <td><span class="gesture">Тап</span></td>
+        <td>Свернуть / развернуть подсписок (только у родительских элементов)</td>
+      </tr>
+      <tr>
+        <td><span class="gesture">Долгое нажатие</span> 370 мс</td>
+        <td>Начать перетаскивание элемента и его дочерних элементов как группы</td>
+      </tr>
+      <tr>
+        <td><span class="gesture">Перетаскивание</span></td>
+        <td>Сортировка. Смещение вправо во время тяга → +1 уровень вложенности</td>
+      </tr>
+      <tr>
+        <td><span class="gesture">Свайп вправо</span> &gt; 20% экрана</td>
+        <td>Открывает правую панель:
+          <span class="badge badge-green">Вложенный</span>
+          <span class="badge badge-blue">Просмотр</span>
+          <span class="badge badge-blue">Изменить</span>
+          <span class="badge badge-red">Удалить</span><br>
+          Вертикальный сдвиг пальца выбирает зону
+        </td>
+      </tr>
+      <tr>
+        <td><span class="gesture">Свайп влево</span> &gt; 20% экрана</td>
+        <td>Открывает левую панель тегов. Теги уже назначенные — внизу со знаком −. Вертикальный сдвиг выбирает тег</td>
+      </tr>
+      <tr>
+        <td><span class="gesture">Возврат в 20%</span></td>
+        <td>Закрывает активную панель без выполнения действия</td>
+      </tr>
+      <tr>
+        <td><span class="gesture">Дроп в зону</span></td>
+        <td>Выполняет выбранное действие</td>
+      </tr>
+      <tr>
+        <td><span class="gesture">Кнопка +</span></td>
+        <td>Добавить новый элемент в конец списка</td>
+      </tr>
+      <tr>
+        <td><span class="gesture">Кнопка ↩</span></td>
+        <td>Отменить последнее перетаскивание (один шаг undo)</td>
+      </tr>
+      <tr>
+        <td><span class="gesture">Кнопка 🎤</span></td>
+        <td>PTT — удержать для записи голоса, отпустить для отправки на сервер</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- ══ Структура данных ════════════════════════════════════════════════ -->
+  <h2>Структура данных</h2>
+  <div class="card">
+    <p class="code-label">list-data.js — плоский массив</p>
+    <pre><span class="kw">let</span> <span class="id">items</span> = [
+  { <span class="id">id</span>: <span class="num">2</span>,  <span class="id">line1</span>: <span class="str">'Хлеб ржаной'</span> },
+  { <span class="id">id</span>: <span class="num">26</span>, <span class="id">line1</span>: <span class="str">'Бородинский'</span>, <span class="id">line2</span>: <span class="str">'400 г'</span>, <span class="id">level</span>: <span class="num">1</span> },
+  { <span class="id">id</span>: <span class="num">27</span>, <span class="id">line1</span>: <span class="str">'Столичный'</span>,   <span class="id">line2</span>: <span class="str">'500 г'</span>, <span class="id">level</span>: <span class="num">1</span> },
+];
+<span class="kw">let</span> <span class="id">nextId</span> = <span class="num">32</span>; <span class="cm">// монотонно растущий, ID не переиспользуются</span></pre>
+  </div>
+
+  <div class="card">
+    <table>
+      <tr><th>Поле</th><th>Тип</th><th>Описание</th></tr>
+      <tr>
+        <td><span class="field">id</span></td>
+        <td><span class="type">number</span></td>
+        <td>Уникальный идентификатор элемента</td>
+      </tr>
+      <tr>
+        <td><span class="field">line1</span></td>
+        <td><span class="type">string</span></td>
+        <td>Заголовок (обязательно)</td>
+      </tr>
+      <tr>
+        <td><span class="field">line2</span></td>
+        <td><span class="type">string</span> <span class="optional">?</span></td>
+        <td>Подпись / дополнительный текст</td>
+      </tr>
+      <tr>
+        <td><span class="field">level</span></td>
+        <td><span class="type">number</span> <span class="optional">?</span></td>
+        <td>Глубина вложенности: 0 = корень (по умолчанию), 1 = дочерний и т.д.</td>
+      </tr>
+      <tr>
+        <td><span class="field">collapsed</span></td>
+        <td><span class="type">boolean</span> <span class="optional">?</span></td>
+        <td>Подсписок свёрнут. Управляется через <code>toggleCollapse()</code></td>
+      </tr>
+      <tr>
+        <td><span class="field">tags</span></td>
+        <td><span class="type">string[]</span> <span class="optional">?</span></td>
+        <td>Список тегов, назначенных элементу через левую панель</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- ══ Вложенность и сворачивание ══════════════════════════════════════ -->
+  <h2>Вложенность и сворачивание</h2>
+  <div class="card">
+    <p class="code-label">render() — линейный проход по плоскому массиву</p>
+    <pre><span class="kw">let</span> <span class="id">collapsedAt</span> = Infinity;
+
+<span class="id">items</span>.<span class="fn">forEach</span>((<span class="id">item</span>, <span class="id">idx</span>) => {
+  <span class="kw">const</span> <span class="id">level</span>  = <span class="id">item</span>.<span class="id">level</span> || <span class="num">0</span>;
+  <span class="kw">const</span> <span class="id">hidden</span> = <span class="id">level</span> &gt; <span class="id">collapsedAt</span>;   <span class="cm">// глубже свёрнутого родителя</span>
+
+  <span class="kw">if</span> (!<span class="id">hidden</span>) <span class="id">collapsedAt</span> = <span class="id">item</span>.<span class="id">collapsed</span> ? <span class="id">level</span> : Infinity;
+
+  <span class="kw">const</span> <span class="id">hasChildren</span> = (<span class="id">items</span>[<span class="id">idx</span> + <span class="num">1</span>]?.<span class="id">level</span> || <span class="num">0</span>) &gt; <span class="id">level</span>;
+
+  <span class="id">wrapper</span>.<span class="id">style</span>.<span class="id">display</span>    = <span class="id">hidden</span> ? <span class="str">'none'</span> : <span class="str">''</span>;
+  <span class="id">wrapper</span>.<span class="id">style</span>.<span class="id">marginLeft</span> = (<span class="id">level</span> * <span class="num">24</span>) + <span class="str">'px'</span>;
+});</pre>
+    <div class="note">Дерево не строится — <code>level</code> читается прямо из элемента. Отступ = level × 24 px.</div>
+  </div>
+
+  <div class="card">
+    <p class="code-label">toggleCollapse() — пишет флаг и вызывает render()</p>
+    <pre><span class="kw">function</span> <span class="fn">toggleCollapse</span>(<span class="id">itemId</span>) {
+  <span class="kw">const</span> <span class="id">item</span> = <span class="id">items</span>.<span class="fn">find</span>(<span class="id">i</span> => <span class="id">i</span>.<span class="id">id</span> === <span class="id">itemId</span>);
+  <span class="kw">const</span> <span class="id">hasChildren</span> = <span class="cm">/* следующий элемент глубже */</span>;
+  <span class="kw">if</span> (!<span class="id">hasChildren</span>) <span class="kw">return</span>;
+  <span class="id">item</span>.<span class="id">collapsed</span> = !<span class="id">item</span>.<span class="id">collapsed</span>;
+  <span class="fn">render</span>();
+}</pre>
+  </div>
+
+  <!-- ══ Изменение данных ════════════════════════════════════════════════ -->
+  <h2>Изменение данных</h2>
+  <div class="card">
+    <table>
+      <tr><th>Действие</th><th>Мутация items[]</th></tr>
+      <tr>
+        <td>Добавить</td>
+        <td><code>items.push({ id: nextId++, ... })</code></td>
+      </tr>
+      <tr>
+        <td>Добавить вложенный</td>
+        <td><code>items.splice(insertIdx, 0, { ..., level: parent.level + 1 })</code></td>
+      </tr>
+      <tr>
+        <td>Редактировать</td>
+        <td><code>item.line1 = ...; item.line2 = ...</code></td>
+      </tr>
+      <tr>
+        <td>Удалить</td>
+        <td><code>items = items.filter(i => i.id !== itemId)</code></td>
+      </tr>
+      <tr>
+        <td>Перетащить</td>
+        <td>После drop DOM-порядок враппе­ров читается обратно:<br><code>items = [...wrappers].map(w => items.find(it => it.id === +w.dataset.id))</code></td>
+      </tr>
+      <tr>
+        <td>Тег</td>
+        <td><code>item.tags.push(tag)</code> или <code>item.tags.splice(idx, 1)</code></td>
+      </tr>
+      <tr>
+        <td>Отмена (undo)</td>
+        <td><code>items = undoSnapshot</code> — глубокая копия, сохранённая перед drag</td>
+      </tr>
+    </table>
+    <div class="note">Все данные живут только в памяти. Перезагрузка страницы возвращает состояние из <code>list-data.js</code>.</div>
+  </div>
+
+  <!-- ══ Паттерн рендера ═════════════════════════════════════════════════ -->
+  <h2>Паттерн обновления UI</h2>
+  <div class="card">
+    <div class="section-row">
+      <div class="section-key">Единая точка рендера</div>
+      <div class="section-val"><code>render()</code> полностью пересоздаёт DOM-список из <code>items[]</code> при каждом изменении</div>
+    </div>
+    <div class="section-row">
+      <div class="section-key">Нет фреймворка</div>
+      <div class="section-val">Ванильный JS — <code>createElement</code>, <code>appendChild</code>, <code>innerHTML</code></div>
+    </div>
+    <div class="section-row">
+      <div class="section-key">Жесты</div>
+      <div class="section-val"><code>bindGesture(el, ...)</code> навешивается на каждый элемент при каждом <code>render()</code></div>
+    </div>
+    <div class="section-row">
+      <div class="section-key">Состояние жеста</div>
+      <div class="section-val">Глобальный <code>dragState</code> и локальные <code>rdAnchor</code> / <code>ldAnchor</code> в замыкании <code>bindGesture</code></div>
+    </div>
+    <div class="section-row">
+      <div class="section-key">Блокировка жестов</div>
+      <div class="section-val">Флаг <code>modalOpen</code> блокирует <code>touchstart</code> пока открыта модалка</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
