@@ -248,7 +248,7 @@ function startDrag(wrapper, clientY, clientX) {
     children.push(allWrappers[i]);
   }
 
-  dragState = { wrapper, lastClientY: clientY, offsetY: 0, nestBaseX: clientX, children };
+  dragState = { wrapper, lastClientY: clientY, offsetY: 0, nestBaseX: clientX, children, originalLevel: baseLevel };
 
   // Collapse children visually during drag
   for (const child of children) child.style.display = 'none';
@@ -416,7 +416,7 @@ function autoScrollStep() {
 function finalizeDrag() {
   stopAutoScroll();
   clearBoundaryMarkers();
-  const { wrapper, pendingLevel, rightShifted, children } = dragState;
+  const { wrapper, pendingLevel, rightShifted, children, originalLevel } = dragState;
   dragState = null;
 
   // If no right shift: correct position when group lands between items of different levels.
@@ -437,7 +437,7 @@ function finalizeDrag() {
 
   // Apply pending nesting level; propagate delta to children.
   if (pendingLevel !== undefined) {
-    const delta = pendingLevel - (+wrapper.dataset.level || 0);
+    const delta = pendingLevel - originalLevel;
     applyItemIndent(wrapper, pendingLevel);
     for (const child of children) {
       const newChildLevel = Math.max(0, (+child.dataset.level || 0) + delta);
