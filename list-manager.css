@@ -123,7 +123,10 @@ header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
   border: 2px solid #007aff;
   border-radius: 10px;
   background: #f8fbff;
-  touch-action: none;
+  /* touch-action intentionally NOT set here:
+     changing it mid-touch triggers touchcancel on mobile,
+     which immediately aborts the drag. Scroll is blocked
+     by e.preventDefault() in the document touchmove handler. */
 }
 
 .item-line1 {
