@@ -201,6 +201,8 @@ let dragState = null;
 let autoScrollRAF = null;
 const MAX_SCROLL = 14;
 let markerTop = null, markerBottom = null;
+let lastTouchEndTime = 0;  // guard: prevents mouse handlers from firing after touch
+let wasDragging = false;   // guard: prevents click-collapse firing after a drag
 
 function updateBoundaryMarkers(visibleItems) {
   if (markerTop)    { markerTop.classList.remove('boundary-top');       markerTop = null; }
@@ -229,6 +231,19 @@ document.addEventListener('touchend', () => {
 document.addEventListener('touchcancel', () => {
   if (dragState) finalizeDrag();
 }, { passive: true });
+
+// ── Mouse drag support (desktop) ─────────────────────────────────────────────
+document.addEventListener('mousemove', e => {
+  if (!dragState) return;
+  updateDrag(e.clientY, e.clientX);
+});
+
+document.addEventListener('mouseup', () => {
+  if (!dragState) return;
+  finalizeDrag();
+  wasDragging = true;
+  setTimeout(() => { wasDragging = false; }, 300);
+});
 
 function startDrag(wrapper, clientY, clientX) {
   saveUndoSnapshot();
@@ -681,8 +696,55 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     }
   };
 
-  el.addEventListener('touchend', onEnd);
+  el.addEventListener('touchend', () => { lastTouchEndTime = Date.now(); onEnd(); });
   el.addEventListener('touchcancel', onEnd);
+
+  // ── Mouse handlers (desktop) ─────────────────────────────────────────────
+  el.addEventListener('mousedown', e => {
+    if (Date.now() - lastTouchEndTime < 500) return; // ignore synthetic mouse after touch
+    if (dragState || modalOpen) return;
+    if (e.button !== 0) return;
+    startX = curX = e.clientX;
+    startY = curY = e.clientY;
+    active = true;
+    lockedH = false;
+    rdAnchor = null;
+    ldAnchor = null;
+    el.style.transition = 'none';
+    el.classList.add('pressing');
+    longTimer = setTimeout(() => {
+      longTimer = null;
+      active = false;
+      rdAnchor = null;
+      hideDrop();
+      el.style.transform = '';
+      actionBg.style.opacity = '0';
+      startDrag(wrapper, curY, curX);
+    }, 370);
+  });
+
+  el.addEventListener('mousemove', e => {
+    if (!longTimer) return;
+    if (Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8) {
+      clearTimeout(longTimer); longTimer = null;
+      el.classList.remove('pressing');
+    }
+  });
+
+  el.addEventListener('mouseup', () => {
+    if (dragState) return; // document mouseup handles drag finalization
+    clearTimeout(longTimer); longTimer = null;
+    el.classList.remove('pressing');
+    active = false;
+    el.style.transition = 'transform 0.3s cubic-bezier(.4,0,.2,1)';
+    el.style.transform = '';
+  });
+
+  el.addEventListener('click', e => {
+    if (Date.now() - lastTouchEndTime < 500) return; // ignore synthetic click after touch
+    if (dragState || wasDragging) return;
+    toggleCollapse(itemId);
+  });
 }
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
