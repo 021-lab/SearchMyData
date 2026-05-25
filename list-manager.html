@@ -58,6 +58,7 @@
 </div>
 
 <script src="list-data.js"></script>
+<script src="api.js"></script>
 <script>
 'use strict';
 
@@ -136,13 +137,17 @@ function saveUndoSnapshot() {
 }
 
 function toggleCollapse(itemId) {
-  const idx = items.findIndex(i => i.id === itemId);
+  const idx = items.findIndex(i => i.id == itemId);
   if (idx < 0) return;
   const item = items[idx];
   const hasChildren = idx < items.length - 1 && (items[idx + 1].level || 0) > (item.level || 0);
   if (!hasChildren) return;
   item.collapsed = !item.collapsed;
   render();
+  if (apiMode) {
+    apiAction('usr', 'patch', [{ op: 'replace', path: `/tsk/${itemId}/cld`, value: !!item.collapsed }])
+      .catch(e => showToast('⚠ ' + e.message.slice(0, 60)));
+  }
 }
 
 // ─── Drag (long press) ───────────────────────────────────────────────────────
@@ -190,7 +195,7 @@ function startDrag(wrapper, clientY, clientX) {
   // Collect group: all items with higher level immediately following parent
   const allWrappers = [...container.querySelectorAll('.list-item-wrapper')];
   const startIdx = allWrappers.indexOf(wrapper);
-  const parentItem = items.find(i => i.id === +wrapper.dataset.id);
+  const parentItem = items.find(i => i.id == wrapper.dataset.id);
   const baseLevel = parentItem?.level || 0;
   const children = [];
   for (let i = startIdx + 1; i < allWrappers.length; i++) {
@@ -248,8 +253,8 @@ function updateDraggedLevel() {
   const idx = all.indexOf(wrapper);
   let newLevel = 0;
   if (idx > 0) {
-    const aboveId  = +all[idx - 1].dataset.id;
-    const aboveItem = items.find(i => i.id === aboveId);
+    const aboveId  = all[idx - 1].dataset.id;
+    const aboveItem = items.find(i => i.id == aboveId);
     const aboveLevel = aboveItem ? (aboveItem.level || 0) : 0;
     newLevel = dragState.rightShifted ? aboveLevel + 1 : aboveLevel;
   }
@@ -410,15 +415,15 @@ function finalizeDrag() {
 
   // Commit the pending nesting level to the parent, propagate delta to children.
   if (pendingLevel !== undefined) {
-    const itemId = +wrapper.dataset.id;
-    const parentItem = items.find(i => i.id === itemId);
+    const itemId = wrapper.dataset.id;
+    const parentItem = items.find(i => i.id == itemId);
     if (parentItem) {
       const delta = pendingLevel - (parentItem.level || 0);
       parentItem.level = pendingLevel;
       applyItemIndent(wrapper, pendingLevel);
       // Apply the same delta to every child so relative indents are preserved
       for (const child of children) {
-        const childItem = items.find(i => i.id === +child.dataset.id);
+        const childItem = items.find(i => i.id == child.dataset.id);
         if (childItem) {
           childItem.level = Math.max(0, (childItem.level || 0) + delta);
           applyItemIndent(child, childItem.level);
@@ -440,8 +445,17 @@ function finalizeDrag() {
     wrapper.style.transition = '';
     wrapper.classList.remove('is-dragging');
     const wrappers = [...container.querySelectorAll('.list-item-wrapper')];
-    items = wrappers.map(w => items.find(it => it.id === +w.dataset.id)).filter(Boolean);
+    items = wrappers.map(w => items.find(it => it.id == w.dataset.id)).filter(Boolean);
     render();
+    // Sync new order + parent links to backend
+    if (apiMode) {
+      const reorderPayload = items.map(i => ({
+        id: String(i.id),
+        prt: computeParent(items, i.id),
+      }));
+      apiAction('usr', 'reorder', { items: reorderPayload })
+        .catch(e => showToast('⚠ ' + e.message.slice(0, 60)));
+    }
   }, 220);
 }
 
@@ -517,12 +531,25 @@ function execDrop(action, itemId, wrapper) {
 
 function execTag(tag, itemId) {
   if (!tag) return;
-  const item = items.find(i => i.id === itemId);
+  const item = items.find(i => i.id == itemId);
   if (!item) return;
   if (!item.tags) item.tags = [];
   const idx = item.tags.indexOf(tag);
-  if (idx >= 0) { item.tags.splice(idx, 1); showToast(`«${tag}» убран`); }
-  else          { item.tags.push(tag);       showToast(`«${tag}» добавлен`); }
+  if (idx >= 0) {
+    item.tags.splice(idx, 1);
+    showToast(`«${tag}» убран`);
+    if (apiMode) {
+      apiAction('usr', 'patch', [{ op: 'remove', path: `/tsk/${itemId}/tgs/${idx}` }])
+        .catch(e => showToast('⚠ ' + e.message.slice(0, 60)));
+    }
+  } else {
+    item.tags.push(tag);
+    showToast(`«${tag}» добавлен`);
+    if (apiMode) {
+      apiAction('usr', 'patch', [{ op: 'add', path: `/tsk/${itemId}/tgs/-`, value: tag }])
+        .catch(e => showToast('⚠ ' + e.message.slice(0, 60)));
+    }
+  }
   render();
 }
 
@@ -681,9 +708,14 @@ function doDelete(itemId, wrapper) {
     wrapper.style.marginBottom = '0';
   });
   setTimeout(() => {
-    items = items.filter(i => i.id !== itemId);
+    // Cascade-delete locally (item + all descendants in flat array)
+    items = cascadeDeleteLocal(items, itemId);
     render();
     showToast('Элемент удалён');
+    if (apiMode) {
+      apiAction('usr', 'patch', [{ op: 'remove', path: `/tsk/${itemId}` }])
+        .catch(e => showToast('⚠ ' + e.message.slice(0, 60)));
+    }
   }, 310);
 }
 
@@ -787,32 +819,60 @@ function closeModal() {
   modalOpen = false;
 }
 
-function confirmModal() {
+async function confirmModal() {
   const l1 = input1.value.trim();
   if (!l1) { input1.focus(); input1.style.borderColor = '#ff3b30'; return; }
   input1.style.borderColor = '';
   const l2 = input2.value.trim();
 
   if (modalMode === 'edit') {
-    const item = items.find(i => i.id === modalTargetId);
-    if (item) { item.line1 = l1; item.line2 = l2 || undefined; }
-    render();
-    closeModal();
-    showToast('Сохранено');
+    const item = items.find(i => i.id == modalTargetId);
+    if (item) {
+      if (apiMode) {
+        const patches = [{ op: 'replace', path: `/tsk/${modalTargetId}/ttl`, value: l1 }];
+        if (l2 !== (item.line2 || '')) {
+          patches.push({ op: 'replace', path: `/tsk/${modalTargetId}/sub`, value: l2 || null });
+        }
+        await apiAction('usr', 'patch', patches)
+          .catch(e => showToast('⚠ ' + e.message.slice(0, 60)));
+      }
+      item.line1 = l1; item.line2 = l2 || undefined;
+    }
+    render(); closeModal(); showToast('Сохранено');
+
   } else if (modalMode === 'nest') {
-    const pIdx = items.findIndex(i => i.id === modalTargetId);
+    let newId;
+    if (apiMode) {
+      const patch = await apiAction('usr', 'add_node', {
+        prt: String(modalTargetId),
+        value: { ttl: l1, sub: l2 || null, tgs: [], cld: false },
+      }).catch(e => { showToast('⚠ ' + e.message.slice(0, 60)); return null; });
+      if (!patch) { closeModal(); return; }
+      newId = patch[0].path.split('/').pop();
+    } else {
+      newId = nextId++;
+    }
+    const pIdx = items.findIndex(i => i.id == modalTargetId);
     const pLevel = pIdx >= 0 ? (items[pIdx].level || 0) : 0;
     let ins = pIdx + 1;
     while (ins < items.length && (items[ins].level || 0) > pLevel) ins++;
-    items.splice(ins, 0, { id: nextId++, line1: l1, line2: l2 || undefined, level: pLevel + 1 });
-    render();
-    closeModal();
-    showToast('Добавлен вложенный');
+    items.splice(ins, 0, { id: newId, line1: l1, line2: l2 || undefined, level: pLevel + 1 });
+    render(); closeModal(); showToast('Добавлен вложенный');
+
   } else {
-    items.push({ id: nextId++, line1: l1, line2: l2 || undefined });
-    render();
-    closeModal();
-    showToast('Элемент добавлен');
+    let newId;
+    if (apiMode) {
+      const patch = await apiAction('usr', 'add_node', {
+        prt: null,
+        value: { ttl: l1, sub: l2 || null, tgs: [], cld: false },
+      }).catch(e => { showToast('⚠ ' + e.message.slice(0, 60)); return null; });
+      if (!patch) { closeModal(); return; }
+      newId = patch[0].path.split('/').pop();
+    } else {
+      newId = nextId++;
+    }
+    items.push({ id: newId, line1: l1, line2: l2 || undefined });
+    render(); closeModal(); showToast('Элемент добавлен');
   }
 }
 
@@ -985,7 +1045,21 @@ function pttReset() {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-render();
+async function initFromApi() {
+  try {
+    const result = await apiSearch('');
+    items = tskToItems(result.tsk);
+    apiMode = true;
+    showToast('📡 Git-бэкенд подключён');
+  } catch (_) {
+    apiMode = false;
+    // Fallback: use hardcoded items from list-data.js
+    showToast('💾 Автономный режим');
+  }
+  render();
+}
+
+initFromApi();
 </script>
 </body>
 </html>

@@ -1,0 +1,14 @@
+# Data repo lives here — has its own .git, exclude from code repo tracking
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
