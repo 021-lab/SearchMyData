@@ -203,6 +203,7 @@ const MAX_SCROLL = 14;
 let markerTop = null, markerBottom = null;
 let lastTouchEndTime = 0;  // guard: prevents mouse handlers from firing after touch
 let wasDragging = false;   // guard: prevents click-collapse firing after a drag
+let currentMouseGesture = null; // { move, end } — set by bindGesture on mousedown
 
 function updateBoundaryMarkers(visibleItems) {
   if (markerTop)    { markerTop.classList.remove('boundary-top');       markerTop = null; }
@@ -232,17 +233,20 @@ document.addEventListener('touchcancel', () => {
   if (dragState) finalizeDrag();
 }, { passive: true });
 
-// ── Mouse drag support (desktop) ─────────────────────────────────────────────
+// ── Mouse support (desktop) ──────────────────────────────────────────────────
 document.addEventListener('mousemove', e => {
-  if (!dragState) return;
-  updateDrag(e.clientY, e.clientX);
+  if (dragState) { updateDrag(e.clientY, e.clientX); return; }
+  currentMouseGesture?.move(e.clientX, e.clientY);
 });
 
 document.addEventListener('mouseup', () => {
-  if (!dragState) return;
-  finalizeDrag();
-  wasDragging = true;
-  setTimeout(() => { wasDragging = false; }, 300);
+  if (dragState) {
+    finalizeDrag();
+    wasDragging = true;
+    setTimeout(() => { wasDragging = false; }, 300);
+  } else {
+    currentMouseGesture?.end();
+  }
 });
 
 function startDrag(wrapper, clientY, clientX) {
@@ -564,118 +568,73 @@ function execTag(tag, itemId) {
 function bindGesture(el, actionBg, itemId, wrapper) {
   let startX, startY, curX, curY, active = false, longTimer = null, lockedH = false;
   let rdAnchor = null, ldAnchor = null;
+  let mouseSwipeDone = false; // blocks click-collapse after a swipe action on desktop
 
-  el.addEventListener('touchstart', e => {
-    if (dragState || modalOpen) return;
-    const t = e.touches[0];
-    startX = curX = t.clientX;
-    startY = curY = t.clientY;
-    active = true;
-    lockedH = false;
-    rdAnchor = null;
-    ldAnchor = null;
-    el.style.transition = 'none';
-    el.classList.add('pressing');
-
-    longTimer = setTimeout(() => {
-      longTimer = null;
-      active = false;
-      rdAnchor = null;
-      hideDrop();
-      el.style.transform = '';
-      actionBg.style.opacity = '0';
-      startDrag(wrapper, curY, curX);
-    }, 370);
-  }, { passive: true });
-
-  el.addEventListener('touchmove', e => {
+  // ── Shared swipe-move logic (called from touchmove and mousemove) ──────────
+  const handleMoveXY = (clientX, clientY) => {
     if (dragState) return;
     if (!active) return;
-    const t = e.touches[0];
-    curX = t.clientX; curY = t.clientY;
+    curX = clientX; curY = clientY;
     const dx = curX - startX;
     const dy = curY - startY;
 
-    // Cancel long press if moved significantly
     if (longTimer && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-      clearTimeout(longTimer);
-      longTimer = null;
+      clearTimeout(longTimer); longTimer = null;
       el.classList.remove('pressing');
     }
 
-    // Lock direction on first decisive move
     if (!lockedH) {
       if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 6) {
-        lockedH = true;   // confirmed horizontal swipe
+        lockedH = true;
       } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 6) {
-        // Vertical — reset and let the page scroll
         el.style.transform = '';
         actionBg.style.opacity = '0';
         actionBg.className = 'action-bg del';
         active = false;
+        currentMouseGesture = null;
         return;
-      } else {
-        return; // not enough movement to decide yet
-      }
+      } else { return; }
     }
 
-    e.preventDefault();
-
     const thresh = window.innerWidth * 0.20;
-    const oy     = curY - startY;
+    const oy = curY - startY;
 
-    // ── Right panel ────────────────────────────────────────────────────────
     if (rdAnchor !== null || (ldAnchor === null && dx > thresh)) {
       if (rdAnchor !== null && dx < thresh) {
         hideDrop(); rdAnchor = null;
-        el.style.transform = `translate(0px, ${oy}px)`;
-        return;
+        el.style.transform = `translate(0px, ${oy}px)`; return;
       }
-      if (!rdAnchor) {
-        rdAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2;
-        showDropPanel(rdAnchor);
-      }
+      if (!rdAnchor) { rdAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2; showDropPanel(rdAnchor); }
       el.style.transform = `translate(${Math.min(dx, 110)}px, ${oy}px)`;
       actionBg.style.opacity = '0';
-      dropAction = setActiveItem(dropPanel, oy);
-      return;
+      dropAction = setActiveItem(dropPanel, oy); return;
     }
 
-    // ── Left panel ─────────────────────────────────────────────────────────
     if (ldAnchor !== null || dx < -thresh) {
       if (ldAnchor !== null && dx > -thresh) {
         hideTagPanel(); ldAnchor = null;
-        el.style.transform = `translate(0px, ${oy}px)`;
-        return;
+        el.style.transform = `translate(0px, ${oy}px)`; return;
       }
-      if (!ldAnchor) {
-        ldAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2;
-        showTagPanel(ldAnchor, itemId);
-      }
+      if (!ldAnchor) { ldAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2; showTagPanel(ldAnchor, itemId); }
       el.style.transform = `translate(${Math.max(dx, -110)}px, ${oy}px)`;
       actionBg.style.opacity = '0';
-      tagAction = setActiveItem(tagPanel, oy);
-      return;
+      tagAction = setActiveItem(tagPanel, oy); return;
     }
 
-    // ── Neutral zone — no panel, element follows finger ────────────────────
     el.style.transform = `translate(${dx}px, ${oy}px)`;
     actionBg.style.opacity = '0';
-  }, { passive: false });
+  };
 
-  const onEnd = () => {
-    clearTimeout(longTimer);
-    longTimer = null;
+  // ── Shared end logic (isMouse=true skips collapse, handled by click event) ─
+  const handleEnd = (isMouse = false) => {
+    clearTimeout(longTimer); longTimer = null;
     el.classList.remove('pressing');
+    if (isMouse) currentMouseGesture = null;
 
-    const act            = dropAction;
-    const wasRight       = !!rdAnchor;
-    const wasLeft        = !!ldAnchor;
+    const act = dropAction, wasRight = !!rdAnchor, wasLeft = !!ldAnchor;
     const savedTagAction = tagAction;
-    rdAnchor = null;
-    ldAnchor = null;
-    hideDrop();
-    hideTagPanel();
+    rdAnchor = null; ldAnchor = null;
+    hideDrop(); hideTagPanel();
 
     if (dragState || !active) return;
     active = false;
@@ -688,61 +647,62 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     actionBg.style.opacity = '0';
 
     if (wasRight && dx > 30 && act) {
+      if (isMouse) mouseSwipeDone = true;
       execDrop(act, itemId, wrapper);
     } else if (wasLeft && dx < -30 && savedTagAction) {
+      if (isMouse) mouseSwipeDone = true;
       execTag(savedTagAction, itemId);
-    } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
-      toggleCollapse(itemId);
+    } else if (!isMouse && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+      toggleCollapse(itemId); // touch tap → collapse (mouse uses click event)
     }
   };
 
-  el.addEventListener('touchend', () => { lastTouchEndTime = Date.now(); onEnd(); });
-  el.addEventListener('touchcancel', onEnd);
+  // ── Touch handlers ───────────────────────────────────────────────────────
+  el.addEventListener('touchstart', e => {
+    if (dragState || modalOpen) return;
+    const t = e.touches[0];
+    startX = curX = t.clientX;
+    startY = curY = t.clientY;
+    active = true; lockedH = false; rdAnchor = null; ldAnchor = null;
+    el.style.transition = 'none';
+    el.classList.add('pressing');
+    longTimer = setTimeout(() => {
+      longTimer = null; active = false; rdAnchor = null;
+      hideDrop(); el.style.transform = ''; actionBg.style.opacity = '0';
+      startDrag(wrapper, curY, curX);
+    }, 370);
+  }, { passive: true });
+
+  el.addEventListener('touchmove', e => {
+    handleMoveXY(e.touches[0].clientX, e.touches[0].clientY);
+    if (lockedH) e.preventDefault();
+  }, { passive: false });
+
+  el.addEventListener('touchend', () => { lastTouchEndTime = Date.now(); handleEnd(false); });
+  el.addEventListener('touchcancel', () => handleEnd(false));
 
   // ── Mouse handlers (desktop) ─────────────────────────────────────────────
   el.addEventListener('mousedown', e => {
-    if (Date.now() - lastTouchEndTime < 500) return; // ignore synthetic mouse after touch
+    if (Date.now() - lastTouchEndTime < 500) return;
     if (dragState || modalOpen) return;
     if (e.button !== 0) return;
     startX = curX = e.clientX;
     startY = curY = e.clientY;
-    active = true;
-    lockedH = false;
-    rdAnchor = null;
-    ldAnchor = null;
+    active = true; lockedH = false; rdAnchor = null; ldAnchor = null;
     el.style.transition = 'none';
     el.classList.add('pressing');
+    currentMouseGesture = { move: handleMoveXY, end: () => handleEnd(true) };
     longTimer = setTimeout(() => {
-      longTimer = null;
-      active = false;
-      rdAnchor = null;
-      hideDrop();
-      el.style.transform = '';
-      actionBg.style.opacity = '0';
+      longTimer = null; active = false; rdAnchor = null;
+      hideDrop(); el.style.transform = ''; actionBg.style.opacity = '0';
       startDrag(wrapper, curY, curX);
     }, 370);
   });
 
-  el.addEventListener('mousemove', e => {
-    if (!longTimer) return;
-    if (Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8) {
-      clearTimeout(longTimer); longTimer = null;
-      el.classList.remove('pressing');
-    }
-  });
-
-  el.addEventListener('mouseup', () => {
-    if (dragState) return; // document mouseup handles drag finalization
-    clearTimeout(longTimer); longTimer = null;
-    el.classList.remove('pressing');
-    active = false;
-    el.style.transition = 'transform 0.3s cubic-bezier(.4,0,.2,1)';
-    el.style.transform = '';
-  });
-
   el.addEventListener('click', e => {
-    if (Date.now() - lastTouchEndTime < 500) return; // ignore synthetic click after touch
+    if (Date.now() - lastTouchEndTime < 500) return;
     if (dragState || wasDragging) return;
+    if (mouseSwipeDone) { mouseSwipeDone = false; return; }
     toggleCollapse(itemId);
   });
 }
