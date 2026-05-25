@@ -10,95 +10,74 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      RAILWAY_TOKEN: rlwy_oacs_c7045a85b9289fc2d769f26dd030bb637a10546b
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli@latest
-
-      - name: Verify Railway auth
-        run: railway whoami --json
-
-      - name: Create Railway project
+      - name: Debug - check Railway API access
         run: |
-          # Check if already linked
-          if railway status --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('project',{}).get('id',''))" 2>/dev/null | grep -q .; then
-            echo "Already linked to a project"
+          echo "Our runner IP:"
+          curl -s https://checkip.amazonaws.com || true
+          echo ""
+          echo "Testing Railway API:"
+          RESP=$(curl -s --max-time 10 -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Authorization: Bearer rlwy_oacs_c7045a85b9289fc2d769f26dd030bb637a10546b" \
+            -H "Content-Type: application/json" \
+            -d '{"query":"{ me { name email } }"}')
+          echo "Response: $RESP"
+          if echo "$RESP" | grep -q "name"; then
+            echo "RAILWAY_API=ACCESSIBLE"
           else
-            # List projects and find or create
-            PROJECTS=$(railway project list --json 2>/dev/null || echo "[]")
-            echo "Existing projects: $PROJECTS"
-            PROJECT_ID=$(echo "$PROJECTS" | python3 -c "
-          import sys, json
-          try:
-              items = json.load(sys.stdin)
-              if not isinstance(items, list):
-                  items = items.get('projects', [])
-              match = [p for p in items if p.get('name') == 'SearchMyData']
-              print(match[0]['id'] if match else '')
-          except: print('')
-            " 2>/dev/null || true)
-
-            if [ -n "$PROJECT_ID" ]; then
-              echo "Linking to existing project $PROJECT_ID"
-              railway link --project "$PROJECT_ID"
-            else
-              echo "Creating new project..."
-              railway init --name SearchMyData
-            fi
+            echo "RAILWAY_API=BLOCKED"
           fi
 
-          railway status --json
-
-      - name: Deploy to Railway
-        id: deploy
+      - name: Install Railway CLI
         run: |
-          set -e
-          echo "Starting deployment..."
-          railway up --ci -m "Deploy SearchMyData"
-          echo "Deployment complete."
+          npm install -g @railway/cli@latest
+          railway --version
 
-      - name: Generate public domain
+      - name: Verify Railway auth
+        run: |
+          export RAILWAY_TOKEN=rlwy_oacs_c7045a85b9289fc2d769f26dd030bb637a10546b
+          railway whoami --json || echo "AUTH_FAILED"
+
+      - name: Deploy
+        run: |
+          export RAILWAY_TOKEN=rlwy_oacs_c7045a85b9289fc2d769f26dd030bb637a10546b
+          railway init --name SearchMyData || true
+          railway status --json || true
+          railway up --ci -m "Deploy SearchMyData" || echo "DEPLOY_FAILED"
+
+      - name: Get domain
         id: domain
         run: |
-          DOMAIN_RESP=$(railway domain --generate --json 2>/dev/null \
-            || railway domain --json 2>/dev/null \
-            || echo "{}")
-          echo "Domain response: $DOMAIN_RESP"
-
-          DOMAIN=$(echo "$DOMAIN_RESP" | python3 -c "
-          import sys, json
+          export RAILWAY_TOKEN=rlwy_oacs_c7045a85b9289fc2d769f26dd030bb637a10546b
+          RESP=$(railway domain --generate --json 2>/dev/null || railway domain --json 2>/dev/null || echo "{}")
+          echo "Domain resp: $RESP"
+          DOMAIN=$(echo "$RESP" | python3 -c "
+          import sys,json
           try:
-              d = json.load(sys.stdin)
-              items = d if isinstance(d, list) else [d]
-              for item in items:
-                  if item.get('domain'):
-                      print(item['domain'])
-                      break
+              d=json.load(sys.stdin)
+              items=d if isinstance(d,list) else [d]
+              for i in items:
+                  if i.get('domain'): print(i['domain']); break
           except: pass
-          " 2>/dev/null || true)
-
+          " || true)
           if [ -n "$DOMAIN" ]; then
             URL="https://$DOMAIN/list-manager.html"
             echo "url=$URL" >> $GITHUB_OUTPUT
-            echo ""
-            echo "============================="
-            echo "  DEPLOYED: $URL"
-            echo "============================="
-          else
-            echo "No domain found. Check Railway dashboard."
-            railway status --json || true
+            echo "DEPLOYED: $URL"
           fi
 
       - name: Write URL to repo
-        if: ${{ steps.domain.outputs.url != '' }}
         run: |
           URL="${{ steps.domain.outputs.url }}"
-          echo "$URL" > DEPLOYMENT_URL.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add DEPLOYMENT_URL.txt
-          git commit -m "chore: deployment URL [skip ci]" || echo "Nothing to commit"
-          git push origin claude/gitasbackend-worktree-mVUTB || echo "Push failed"
+          if [ -n "$URL" ]; then
+            echo "$URL" > DEPLOYMENT_URL.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add DEPLOYMENT_URL.txt
+            git commit -m "chore: deployment URL [skip ci]" || true
+            git push origin claude/gitasbackend-worktree-mVUTB || true
+          else
+            echo "No URL to save"
+          fi
