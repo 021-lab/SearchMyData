@@ -1,4 +1,30 @@
-# Развёртывание Git-as-Backend Workspace
+# Развёртывание Workspace
+
+## Архитектура
+
+```
+Браузер пользователя
+       │
+       ▼
+  [ Один сервер ]
+  ┌─────────────────────────────────────┐
+  │  uvicorn  :8000                     │
+  │                                     │
+  │  /api/tasks/*  →  FastAPI-бэкенд   │
+  │  /*            →  Статика фронта    │
+  │    list-manager.html                │
+  │    list-manager.css                 │
+  │    api.js                           │
+  │                                     │
+  │  data/  ← git-репозиторий данных   │
+  └─────────────────────────────────────┘
+```
+
+**Фронт и бэк — один процесс, один порт.**  
+FastAPI сам отдаёт HTML/CSS/JS и обрабатывает API-запросы.  
+Отдельный веб-сервер для фронта не нужен.
+
+---
 
 ## Требования
 
@@ -6,52 +32,40 @@
 |-----------|--------|
 | Python    | 3.10 + |
 | git       | 2.30 + |
-| pip       | любая  |
 
 ---
 
-## 1. Клонировать репозиторий
+## Быстрый старт (3 команды)
 
 ```bash
 git clone https://github.com/021-lab/SearchMyData.git
 cd SearchMyData
-```
-
----
-
-## 2. Установить зависимости
-
-```bash
 pip install -r backend/requirements.txt
-```
-
----
-
-## 3. Запустить сервер
-
-```bash
 uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-Открыть в браузере:
+Открыть в браузере: `http://<IP>:8000/list-manager.html`
 
-```
-http://<IP-сервера>:8000/list-manager.html
-```
+Папка `data/` с git-репозиторием данных создаётся автоматически при первом запуске.
 
 ---
 
-## 4. Продакшн: systemd-сервис (автозапуск)
+## Продакшн: автозапуск через systemd
 
-Создать файл `/etc/systemd/system/workspace.service`:
+```bash
+# Скопировать проект
+sudo cp -r . /opt/workspace
+```
+
+Создать `/etc/systemd/system/workspace.service`:
 
 ```ini
 [Unit]
-Description=Workspace Git-as-Backend
+Description=Workspace
 After=network.target
 
 [Service]
-WorkingDirectory=/opt/SearchMyData
+WorkingDirectory=/opt/workspace
 ExecStart=/usr/bin/python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=5
@@ -60,28 +74,30 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Включить и запустить:
-
 ```bash
-sudo cp -r . /opt/SearchMyData
 sudo systemctl daemon-reload
-sudo systemctl enable workspace
-sudo systemctl start workspace
+sudo systemctl enable --now workspace
+
+# Проверить статус
+sudo systemctl status workspace
 ```
 
 ---
 
-## 5. Продакшн: nginx + домен (опционально)
+## Продакшн: nginx + домен + HTTPS (опционально)
+
+Если нужен домен и SSL вместо голого порта 8000:
 
 ```nginx
+# /etc/nginx/sites-available/workspace
 server {
     listen 80;
     server_name your-domain.com;
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
     }
 }
 ```
@@ -89,50 +105,56 @@ server {
 ```bash
 sudo ln -s /etc/nginx/sites-available/workspace /etc/nginx/sites-enabled/
 sudo nginx -s reload
+
+# SSL через certbot
+sudo certbot --nginx -d your-domain.com
 ```
+
+После этого сервис доступен по `https://your-domain.com/list-manager.html`.
 
 ---
 
-## Структура проекта
+## Структура файлов
 
 ```
 SearchMyData/
-├── backend/
-│   ├── main.py          # FastAPI — 3 endpoint-а
-│   ├── git_store.py     # Git-хранилище данных
-│   ├── id_gen.py        # Base62 генерация ID
-│   ├── patch_ops.py     # RFC 6902 JSON Patch
-│   ├── models.py        # Pydantic модели
+│
+├── backend/               # Python-бэкенд
+│   ├── main.py            # FastAPI: API + раздача фронта
+│   ├── git_store.py       # Git-хранилище данных
+│   ├── id_gen.py          # Генерация ID (Base62)
+│   ├── patch_ops.py       # RFC 6902 JSON Patch, поиск
+│   ├── models.py          # Pydantic-модели запросов
 │   └── requirements.txt
-├── data/                # Создаётся автоматически при первом запуске
-│   └── project_tree.json
-├── api.js               # Фронтенд API-клиент
-├── list-manager.html    # Интерфейс
-└── list-manager.css
+│
+├── list-manager.html      # ← Фронтенд (отдаётся бэком)
+├── list-manager.css       # ← Фронтенд (отдаётся бэком)
+├── api.js                 # ← Фронтенд (отдаётся бэком)
+│
+└── data/                  # Создаётся автоматически
+    ├── .git/              # git-история всех изменений
+    └── project_tree.json  # Данные задач
 ```
-
-> **data/** — отдельный git-репозиторий для данных.  
-> Создаётся автоматически при первом старте сервера.  
-> Каждое изменение = отдельный git-коммит с именем автора.
 
 ---
 
-## API
+## API-эндпоинты
 
 | Метод | URL | Описание |
 |-------|-----|----------|
-| POST | `/api/tasks/search` | Поиск задач, вернуть поддерево |
-| POST | `/api/tasks/action` | Мутация (`add_node` / `patch` / `reorder`) |
-| POST | `/api/tasks/undo` | Откатить последний коммит (`git revert`) |
+| POST | `/api/tasks/search` | Поиск задач, возвращает поддерево |
+| POST | `/api/tasks/action` | Мутация: `add_node` / `patch` / `reorder` |
+| POST | `/api/tasks/undo`   | Откат последнего коммита (`git revert`) |
+| GET  | `/*`               | Статика фронтенда |
 
 ---
 
-## Данные
-
-Все задачи хранятся в `data/project_tree.json`.  
-История изменений — в `git -C data log`.
+## Данные и история
 
 ```bash
-# Посмотреть историю изменений
-git -C data log --format="%ai %an | %s"
+# Все изменения хранятся как git-коммиты
+git -C data log --format="%ai  %an  |  %s"
+
+# Посмотреть текущее состояние
+cat data/project_tree.json
 ```
