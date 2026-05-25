@@ -45,6 +45,12 @@ store = GitStore(DATA_PATH)
 
 # ── API routes ─────────────────────────────────────────────────────────────────
 
+@app.get("/health")
+async def health():
+    """Railway healthcheck endpoint."""
+    return {"status": "ok"}
+
+
 @app.post("/api/tasks/search")
 async def search(req: SearchRequest):
     """Return a (partial) task tree matching *query*. Empty query = full tree."""
