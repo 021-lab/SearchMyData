@@ -8,104 +8,114 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - name: Skip if already deployed
+        id: check
+        run: |
+          if [ -f DEPLOYMENT_URL.txt ] && grep -q "https://" DEPLOYMENT_URL.txt 2>/dev/null; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Already deployed: $(cat DEPLOYMENT_URL.txt)"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Install Railway CLI
+        if: steps.check.outputs.skip != 'true'
         run: npm install -g @railway/cli@latest
 
-      - name: Create or find Railway project + Deploy
+      - name: Deploy to Railway
+        if: steps.check.outputs.skip != 'true'
+        id: deploy
         env:
           RAILWAY_TOKEN: rlwy_oacs_c7045a85b9289fc2d769f26dd030bb637a10546b
         run: |
           set -e
 
-          echo "=== Auth check ==="
+          echo "=== Auth ==="
           railway whoami --json
 
-          echo "=== Finding or creating project ==="
-          PROJECTS=$(railway project list --json 2>/dev/null || echo "[]")
-          echo "Projects: $PROJECTS"
+          echo "=== Find or create project ==="
+          PROJECTS_JSON=$(railway project list --json 2>/dev/null || echo "[]")
+          echo "Raw: $PROJECTS_JSON"
 
-          PROJECT_ID=$(echo "$PROJECTS" | python3 -c "
+          PROJECT_ID=$(echo "$PROJECTS_JSON" | python3 -c "
           import sys, json
           try:
               data = json.load(sys.stdin)
-              if isinstance(data, list):
-                  projects = data
-              else:
-                  projects = data.get('projects', [])
-              match = [p for p in projects if p.get('name') == 'SearchMyData']
-              print(match[0]['id'] if match else '')
-          except:
+              items = data if isinstance(data, list) else data.get('projects', [])
+              match = [p for p in items if p.get('name') == 'SearchMyData']
+              print(match[0].get('id','') if match else '')
+          except Exception as e:
               print('')
-          " 2>/dev/null || echo "")
+          " 2>/dev/null || true)
 
           if [ -n "$PROJECT_ID" ]; then
-            echo "Found existing project: $PROJECT_ID"
+            echo "Linking existing project: $PROJECT_ID"
             railway link --project "$PROJECT_ID"
           else
-            echo "Creating new project SearchMyData..."
+            echo "Creating new project..."
             railway init --name SearchMyData
           fi
 
-          echo "=== Creating service if needed ==="
+          echo "=== Create service if needed ==="
           SERVICES=$(railway service list --json 2>/dev/null || echo "[]")
-          echo "Services: $SERVICES"
-          SERVICE_COUNT=$(echo "$SERVICES" | python3 -c "
+          COUNT=$(echo "$SERVICES" | python3 -c "
           import sys, json
           try:
-              data = json.load(sys.stdin)
-              services = data if isinstance(data, list) else data.get('services', [])
-              print(len(services))
-          except:
-              print('0')
+              d = json.load(sys.stdin)
+              print(len(d if isinstance(d, list) else d.get('services',[])))
+          except: print('0')
           " 2>/dev/null || echo "0")
 
-          if [ "$SERVICE_COUNT" = "0" ]; then
+          if [ "$COUNT" = "0" ]; then
             echo "Creating web service..."
-            railway add --service web 2>/dev/null || true
+            # Use railway up which auto-creates a service
+            true
           fi
 
-          echo "=== Deploying ==="
-          railway up --ci -m "Deploy SearchMyData"
+          echo "=== Deploy ==="
+          railway up --ci -m "Auto-deploy SearchMyData"
 
-          echo "=== Generating domain ==="
-          DOMAIN=$(railway domain --generate --json 2>/dev/null | python3 -c "
+          echo "=== Generate domain ==="
+          DOMAIN_JSON=$(railway domain --generate --json 2>/dev/null || railway domain --json 2>/dev/null || echo "{}")
+          echo "Domain response: $DOMAIN_JSON"
+
+          DOMAIN=$(echo "$DOMAIN_JSON" | python3 -c "
           import sys, json
           try:
-              data = json.load(sys.stdin)
-              domains = data if isinstance(data, list) else [data]
-              print(next((d.get('domain','') for d in domains if d.get('domain')), ''))
-          except:
-              print('')
-          " 2>/dev/null || echo "")
+              d = json.load(sys.stdin)
+              items = [d] if isinstance(d, dict) else d
+              for item in items:
+                  if item.get('domain'):
+                      print(item['domain']); break
+          except: pass
+          " 2>/dev/null || true)
 
-          if [ -z "$DOMAIN" ]; then
-            DOMAIN=$(railway domain --json 2>/dev/null | python3 -c "
-          import sys, json
-          try:
-              data = json.load(sys.stdin)
-              domains = data if isinstance(data, list) else [data]
-              print(next((d.get('domain','') for d in domains if d.get('domain')), ''))
-          except:
-              print('')
-            " 2>/dev/null || echo "")
-          fi
-
-          echo ""
-          echo "========================================"
-          echo "  DEPLOYMENT COMPLETE!"
           if [ -n "$DOMAIN" ]; then
-            echo "  URL: https://$DOMAIN/list-manager.html"
-          else
-            echo "  Check Railway dashboard for domain."
+            echo "DOMAIN=$DOMAIN" >> $GITHUB_ENV
+            echo "APP_URL=https://$DOMAIN/list-manager.html" >> $GITHUB_ENV
+            echo "deploy_url=https://$DOMAIN/list-manager.html" >> $GITHUB_OUTPUT
           fi
-          echo "========================================"
 
-          railway status --json || true
+          railway status --json 2>/dev/null || true
+
+      - name: Write deployment URL to repo
+        if: steps.deploy.outputs.deploy_url != '' && steps.check.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          URL="${{ steps.deploy.outputs.deploy_url }}"
+          echo "$URL" > DEPLOYMENT_URL.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add DEPLOYMENT_URL.txt
+          git commit -m "chore: save deployment URL [skip ci]" || true
+          git push origin claude/gitasbackend-worktree-mVUTB || true
+          echo ""
+          echo "==============================="
+          echo "  DEPLOYED: $URL"
+          echo "==============================="
