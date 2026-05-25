@@ -216,17 +216,17 @@ function clearBoundaryMarkers() {
   updateBoundaryMarkers([]);
 }
 
-document.addEventListener('touchmove', e => {
+document.addEventListener('pointermove', e => {
   if (!dragState) return;
   e.preventDefault();
-  updateDrag(e.touches[0].clientY, e.touches[0].clientX);
+  updateDrag(e.clientY, e.clientX);
 }, { passive: false });
 
-document.addEventListener('touchend', () => {
+document.addEventListener('pointerup', () => {
   if (dragState) finalizeDrag();
 }, { passive: true });
 
-document.addEventListener('touchcancel', () => {
+document.addEventListener('pointercancel', () => {
   if (dragState) finalizeDrag();
 }, { passive: true });
 
@@ -548,13 +548,14 @@ function execTag(tag, itemId) {
 // ─── Swipe gesture ───────────────────────────────────────────────────────────
 function bindGesture(el, actionBg, itemId, wrapper) {
   let startX, startY, curX, curY, active = false, longTimer = null, lockedH = false;
-  let rdAnchor = null, ldAnchor = null;
+  let rdAnchor = null, ldAnchor = null, ptId = null;
 
-  el.addEventListener('touchstart', e => {
+  el.addEventListener('pointerdown', e => {
     if (dragState || modalOpen) return;
-    const t = e.touches[0];
-    startX = curX = t.clientX;
-    startY = curY = t.clientY;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    ptId = e.pointerId;
+    startX = curX = e.clientX;
+    startY = curY = e.clientY;
     active = true;
     lockedH = false;
     rdAnchor = null;
@@ -569,15 +570,16 @@ function bindGesture(el, actionBg, itemId, wrapper) {
       hideDrop();
       el.style.transform = '';
       actionBg.style.opacity = '0';
+      if (el.hasPointerCapture(ptId)) el.releasePointerCapture(ptId);
       startDrag(wrapper, curY, curX);
     }, 370);
   }, { passive: true });
 
-  el.addEventListener('touchmove', e => {
+  el.addEventListener('pointermove', e => {
+    if (e.pointerId !== ptId) return;
     if (dragState) return;
     if (!active) return;
-    const t = e.touches[0];
-    curX = t.clientX; curY = t.clientY;
+    curX = e.clientX; curY = e.clientY;
     const dx = curX - startX;
     const dy = curY - startY;
 
@@ -591,7 +593,8 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     // Lock direction on first decisive move
     if (!lockedH) {
       if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 6) {
-        lockedH = true;   // confirmed horizontal swipe
+        lockedH = true;   // confirmed horizontal — capture to keep events on this element
+        el.setPointerCapture(ptId);
       } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 6) {
         // Vertical — reset and let the page scroll
         el.style.transform = '';
@@ -681,8 +684,8 @@ function bindGesture(el, actionBg, itemId, wrapper) {
     }
   };
 
-  el.addEventListener('touchend', onEnd);
-  el.addEventListener('touchcancel', onEnd);
+  el.addEventListener('pointerup', onEnd);
+  el.addEventListener('pointercancel', onEnd);
 }
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
