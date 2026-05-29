@@ -298,3 +298,82 @@ header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
 /* ── Item tags ── */
 .item-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
 .item-tag  { background: #ebebff; color: #5856d6; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; }
+
+/* ── Auth overlay ── */
+#auth-overlay {
+  position: fixed; inset: 0;
+  background: linear-gradient(160deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+
+#auth-card {
+  background: #fff;
+  border-radius: 24px;
+  padding: 36px 24px 28px;
+  max-width: 340px;
+  width: calc(100% - 40px);
+  display: flex; flex-direction: column; align-items: center;
+  gap: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+}
+
+#auth-icon { font-size: 48px; line-height: 1; }
+
+#auth-card h2 { font-size: 22px; font-weight: 800; color: #1a1a2e; margin: 0; }
+
+#auth-card > p { font-size: 14px; color: #888; margin: 0; text-align: center; }
+
+#auth-divider {
+  width: 100%; text-align: center; font-size: 12px; color: #ccc;
+  position: relative;
+}
+#auth-divider::before, #auth-divider::after {
+  content: ''; position: absolute; top: 50%; width: 42%;
+  height: 1px; background: #eee;
+}
+#auth-divider::before { left: 0; }
+#auth-divider::after  { right: 0; }
+
+#apple-btn {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  width: 280px; height: 44px;
+  background: #000; color: #fff;
+  border: none; border-radius: 6px;
+  font-size: 15px; font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  cursor: pointer; letter-spacing: -0.2px;
+  transition: background 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}
+#apple-btn:hover  { background: #1d1d1f; }
+#apple-btn:active { background: #3a3a3c; transform: scale(0.97); }
+
+#auth-legal {
+  font-size: 11px; color: #bbb; text-align: center; line-height: 1.4;
+  max-width: 240px;
+}
+
+/* ── User chip in header ── */
+#user-chip {
+  display: flex; align-items: center; gap: 7px;
+  flex-shrink: 0; margin-left: auto;
+}
+
+.u-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  object-fit: cover; display: block;
+}
+
+.u-initial {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #007aff; color: #fff;
+  font-size: 13px; font-weight: 700;
+}
+
+.u-name {
+  font-size: 13px; font-weight: 600; color: #1a1a2e;
+  max-width: 90px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}

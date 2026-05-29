@@ -5,8 +5,40 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Список</title>
 <link rel="stylesheet" href="list-manager.css">
+<script src="https://accounts.google.com/gsi/client" async></script>
 </head>
 <body>
+
+<!-- ── Auth overlay (shown by CSS; hidden by JS when already logged in) ── -->
+<div id="auth-overlay">
+  <div id="auth-card">
+    <div id="auth-icon">📋</div>
+    <h2>Мой список</h2>
+    <p>Войдите, чтобы продолжить</p>
+    <!-- Google Sign-In button (rendered by GIS SDK) -->
+    <div id="g_id_onload"
+      data-client_id="YOUR_GOOGLE_CLIENT_ID"
+      data-callback="handleGoogleSignIn"
+      data-auto_prompt="false">
+    </div>
+    <div class="g_id_signin"
+      data-type="standard"
+      data-size="large"
+      data-theme="outline"
+      data-text="signin_with"
+      data-shape="rectangular"
+      data-logo_alignment="left"
+      data-width="280">
+    </div>
+    <div id="auth-divider">или</div>
+    <!-- Apple Sign-In button -->
+    <button id="apple-btn" onclick="appleSignIn()">
+      <svg width="17" height="20" viewBox="0 0 814 1000" fill="currentColor" aria-hidden="true"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105-36.8-162.8-107C47 444.3 16.8 301.9 16.8 266.5c0-198.8 130-303.6 257.5-303.6 69.3 0 126.9 45.5 170.1 45.5 41.3 0 106.1-48.1 183.8-48.1 28 0 130 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28 31.8-57.5 83.8-57.5 135.7 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 137.9-71.5z"/></svg>
+      Войти через Apple ID
+    </button>
+    <p id="auth-legal">Нажимая «Войти», вы принимаете условия использования</p>
+  </div>
+</div>
 
 <header>
   <button id="undo-btn" disabled title="Отменить перетаскивание">↩</button>
@@ -1004,6 +1036,115 @@ function pttReset() {
   pttBtn.classList.remove('sending');
   pttLabel.textContent = 'Голос';
 }
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+const AUTH_KEY     = 'smd_auth';
+const LOG_ENDPOINT = '/api/log-registration';
+const authOverlay  = document.getElementById('auth-overlay');
+
+function parseJwt(token) {
+  const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+  return JSON.parse(atob(b64));
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve;
+    s.onerror = () => reject(new Error('Script load failed: ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+// Google GIS callback — must be global
+window.handleGoogleSignIn = function(response) {
+  const p = parseJwt(response.credential);
+  onSignIn('google', { id: p.sub, name: p.name || '', email: p.email || '', picture: p.picture || '' });
+};
+
+// Apple Sign-In — loads SDK on demand, uses popup flow
+let appleInitialized = false;
+window.appleSignIn = async function() {
+  if (typeof AppleID === 'undefined') {
+    try {
+      await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
+    } catch {
+      showToast('Не удалось загрузить Apple SDK');
+      return;
+    }
+  }
+  if (!appleInitialized) {
+    AppleID.auth.init({
+      clientId:    'YOUR_APPLE_SERVICE_ID',   // replace with your Apple Service ID
+      scope:       'name email',
+      redirectURI: window.location.origin + window.location.pathname,
+      usePopup:    true
+    });
+    appleInitialized = true;
+  }
+  try {
+    const data = await AppleID.auth.signIn();
+    const p  = parseJwt(data.authorization.id_token);
+    const nm = data.user
+      ? [data.user.name.firstName, data.user.name.lastName].filter(Boolean).join(' ')
+      : '';
+    onSignIn('apple', { id: p.sub, name: nm, email: p.email || data.user?.email || '' });
+  } catch (err) {
+    const msg = err?.error || err?.message || String(err);
+    if (msg !== 'popup_closed_by_user') {
+      diagLog_('Apple Sign In: ' + msg, 'error');
+      showToast('Ошибка входа через Apple');
+    }
+  }
+};
+
+async function onSignIn(provider, user) {
+  const record = { provider, id: user.id, name: user.name, email: user.email, picture: user.picture || '', ts: Date.now() };
+  localStorage.setItem(AUTH_KEY, JSON.stringify(record));
+  renderUserChip(user);
+  authOverlay.style.display = 'none';
+  showToast('Добро пожаловать, ' + (user.name || user.email || 'Пользователь') + '!');
+  appendRegistrationLog(record);
+}
+
+async function appendRegistrationLog(record) {
+  try {
+    const res = await fetch(LOG_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record)
+    });
+    diagLog_(res.ok ? 'Запись в registrations.log ✓' : 'Лог HTTP ' + res.status, res.ok ? 'success' : 'warn');
+  } catch {
+    diagLog_('Лог-сервер недоступен — данные в localStorage', 'warn');
+  }
+}
+
+function renderUserChip(user) {
+  if (document.getElementById('user-chip')) return;
+  const name = user.name || user.email || 'Пользователь';
+  const chip = document.createElement('div');
+  chip.id = 'user-chip';
+  chip.innerHTML = user.picture
+    ? `<img src="${user.picture.replace(/"/g, '&quot;')}" class="u-avatar" alt="">`
+    : `<span class="u-avatar u-initial">${escHtml(name[0].toUpperCase())}</span>`;
+  chip.innerHTML += `<span class="u-name">${escHtml(name)}</span>`;
+  document.querySelector('header').appendChild(chip);
+}
+
+// Check stored session immediately — hides overlay if already logged in
+(function() {
+  const raw = localStorage.getItem(AUTH_KEY);
+  if (raw) {
+    try {
+      const u = JSON.parse(raw);
+      authOverlay.style.display = 'none';
+      renderUserChip(u);
+      return;
+    } catch {}
+  }
+  // Overlay stays visible (display:flex set in CSS)
+})();
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 render();
