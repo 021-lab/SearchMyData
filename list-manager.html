@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Список</title>
 <link rel="stylesheet" href="list-manager.css">
-<script src="https://accounts.google.com/gsi/client" async></script>
 </head>
 <body>
 
@@ -1051,42 +1050,30 @@ function loadScript(src) {
   });
 }
 
-// ── Google Sign-In (GIS oauth2 token client, custom button) ──────────────────
-const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID'; // replace with your Google OAuth Client ID
-let gsiTokenClient = null;
-
+// ── Google Sign-In — popup → server handles real OAuth or mock form ────────────
 window.googleSignIn = function() {
-  if (!window.google?.accounts?.oauth2) {
-    showToast('Google SDK загружается, попробуйте снова…');
+  const popup = window.open(
+    '/auth/google/start',
+    'google_auth',
+    'width=450,height=520,scrollbars=no,resizable=no,status=no,menubar=no,toolbar=no'
+  );
+  if (!popup) {
+    showToast('Разрешите всплывающие окна для входа через Google');
     return;
   }
-  try {
-    if (!gsiTokenClient) {
-      gsiTokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: 'openid profile email',
-        callback: async (resp) => {
-          if (resp.error) {
-            diagLog_('Google: ' + resp.error, 'error');
-            showToast('Ошибка Google: ' + resp.error);
-            return;
-          }
-          try {
-            const info = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-              headers: { Authorization: 'Bearer ' + resp.access_token }
-            }).then(r => r.json());
-            onSignIn('google', { id: info.sub, name: info.name || '', email: info.email || '', picture: info.picture || '' });
-          } catch {
-            showToast('Не удалось получить профиль Google');
-          }
-        }
-      });
+  function onMsg(e) {
+    if (e.origin !== location.origin) return;
+    if (!e.data?.google && !e.data?.error) return;
+    window.removeEventListener('message', onMsg);
+    if (e.data.error) {
+      diagLog_('Google: ' + e.data.error, 'error');
+      showToast('Ошибка Google: ' + e.data.error);
+      return;
     }
-    gsiTokenClient.requestAccessToken({ prompt: 'select_account' });
-  } catch (e) {
-    diagLog_('Google init: ' + e.message, 'error');
-    showToast('Укажите Google Client ID');
+    const u = e.data.google;
+    onSignIn('google', { id: u.sub, name: u.name, email: u.email, picture: u.picture || '' });
   }
+  window.addEventListener('message', onMsg);
 };
 
 // ── Apple Sign-In (SDK on demand, popup flow) ─────────────────────────────────
