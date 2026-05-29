@@ -15,21 +15,16 @@
     <div id="auth-icon">📋</div>
     <h2>Мой список</h2>
     <p>Войдите, чтобы продолжить</p>
-    <!-- Google Sign-In button (rendered by GIS SDK) -->
-    <div id="g_id_onload"
-      data-client_id="YOUR_GOOGLE_CLIENT_ID"
-      data-callback="handleGoogleSignIn"
-      data-auto_prompt="false">
-    </div>
-    <div class="g_id_signin"
-      data-type="standard"
-      data-size="large"
-      data-theme="outline"
-      data-text="signin_with"
-      data-shape="rectangular"
-      data-logo_alignment="left"
-      data-width="280">
-    </div>
+    <!-- Google Sign-In button -->
+    <button id="google-btn" onclick="googleSignIn()">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+      </svg>
+      Войти через Google
+    </button>
     <div id="auth-divider">или</div>
     <!-- Apple Sign-In button -->
     <button id="apple-btn" onclick="appleSignIn()">
@@ -1056,14 +1051,48 @@ function loadScript(src) {
   });
 }
 
-// Google GIS callback — must be global
-window.handleGoogleSignIn = function(response) {
-  const p = parseJwt(response.credential);
-  onSignIn('google', { id: p.sub, name: p.name || '', email: p.email || '', picture: p.picture || '' });
+// ── Google Sign-In (GIS oauth2 token client, custom button) ──────────────────
+const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID'; // replace with your Google OAuth Client ID
+let gsiTokenClient = null;
+
+window.googleSignIn = function() {
+  if (!window.google?.accounts?.oauth2) {
+    showToast('Google SDK загружается, попробуйте снова…');
+    return;
+  }
+  try {
+    if (!gsiTokenClient) {
+      gsiTokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: 'openid profile email',
+        callback: async (resp) => {
+          if (resp.error) {
+            diagLog_('Google: ' + resp.error, 'error');
+            showToast('Ошибка Google: ' + resp.error);
+            return;
+          }
+          try {
+            const info = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: 'Bearer ' + resp.access_token }
+            }).then(r => r.json());
+            onSignIn('google', { id: info.sub, name: info.name || '', email: info.email || '', picture: info.picture || '' });
+          } catch {
+            showToast('Не удалось получить профиль Google');
+          }
+        }
+      });
+    }
+    gsiTokenClient.requestAccessToken({ prompt: 'select_account' });
+  } catch (e) {
+    diagLog_('Google init: ' + e.message, 'error');
+    showToast('Укажите Google Client ID');
+  }
 };
 
-// Apple Sign-In — loads SDK on demand, uses popup flow
+// ── Apple Sign-In (SDK on demand, popup flow) ─────────────────────────────────
+const APPLE_CLIENT_ID = 'YOUR_APPLE_SERVICE_ID'; // replace with your Apple Service ID (needs HTTPS)
 let appleInitialized = false;
+
 window.appleSignIn = async function() {
   if (typeof AppleID === 'undefined') {
     try {
@@ -1074,13 +1103,19 @@ window.appleSignIn = async function() {
     }
   }
   if (!appleInitialized) {
-    AppleID.auth.init({
-      clientId:    'YOUR_APPLE_SERVICE_ID',   // replace with your Apple Service ID
-      scope:       'name email',
-      redirectURI: window.location.origin + window.location.pathname,
-      usePopup:    true
-    });
-    appleInitialized = true;
+    try {
+      AppleID.auth.init({
+        clientId:    APPLE_CLIENT_ID,
+        scope:       'name email',
+        redirectURI: window.location.origin + window.location.pathname,
+        usePopup:    true
+      });
+      appleInitialized = true;
+    } catch (e) {
+      diagLog_('Apple init: ' + e.message, 'error');
+      showToast('Укажите Apple Service ID');
+      return;
+    }
   }
   try {
     const data = await AppleID.auth.signIn();
@@ -1091,9 +1126,11 @@ window.appleSignIn = async function() {
     onSignIn('apple', { id: p.sub, name: nm, email: p.email || data.user?.email || '' });
   } catch (err) {
     const msg = err?.error || err?.message || String(err);
-    if (msg !== 'popup_closed_by_user') {
+    if (msg === 'popup_closed_by_user' || msg === 'user_cancelled_authorize') {
+      showToast('Вход через Apple отменён');
+    } else {
       diagLog_('Apple Sign In: ' + msg, 'error');
-      showToast('Ошибка входа через Apple');
+      showToast('Ошибка Apple: ' + msg.slice(0, 50));
     }
   }
 };
