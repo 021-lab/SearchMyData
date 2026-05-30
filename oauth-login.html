@@ -140,6 +140,27 @@
 <script>
 const CLIENT_ID = '327195172491-vq747ap3g0v3i8s9to4q71o8ft6vearj.apps.googleusercontent.com';
 
+// ── Remote logging (sends to local server POST /log) ─────────────────────────
+const LOG_URL = 'http://localhost:8080/log';
+function rlog(level, ...args) {
+  const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+  console[level]('[LOG]', msg);
+  fetch(LOG_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ level, msg })
+  }).catch(() => {});
+}
+const log  = (...a) => rlog('log',  ...a);
+const lerr = (...a) => rlog('error', ...a);
+const lwarn= (...a) => rlog('warn', ...a);
+
+// Intercept unhandled errors
+window.addEventListener('error',            e  => lerr('UNHANDLED ERROR:', e.message, '@', e.filename + ':' + e.lineno));
+window.addEventListener('unhandledrejection', e => lerr('UNHANDLED PROMISE:', e.reason?.message || e.reason));
+
+log('Page loaded, origin=' + location.origin + ', href=' + location.href);
+
 let tokenClient = null;
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -175,6 +196,7 @@ function logout() {
 
 // ── Google Sign-In (GIS, popup, no backend) ───────────────────────────────────
 function onGoogleLoad() {
+  log('GIS SDK loaded successfully');
   // One Tap / ID token flow → credential JWT returned directly to callback
   google.accounts.id.initialize({
     client_id: CLIENT_ID,
@@ -188,15 +210,24 @@ function onGoogleLoad() {
     client_id: CLIENT_ID,
     scope: 'openid profile email',
     callback: onAccessToken,
-    error_callback: (err) => showStatus('OAuth ошибка: ' + err.type, 'error'),
+    error_callback: (err) => {
+      lerr('tokenClient error:', JSON.stringify(err));
+      showStatus('OAuth ошибка: ' + err.type, 'error');
+    },
   });
+  log('tokenClient initialized');
 }
 
 function signInGoogle() {
+  log('signInGoogle() called');
   clearStatus();
-  // Try One Tap first; if it's suppressed, fall back to token popup
   google.accounts.id.prompt((note) => {
+    log('One Tap prompt notification:', note.getMomentType(),
+        '| notDisplayed:', note.isNotDisplayed(),
+        '| skipped:', note.isSkippedMoment(),
+        '| reason:', note.getNotDisplayedReason?.() || note.getSkippedReason?.() || 'n/a');
     if (note.isNotDisplayed() || note.isSkippedMoment()) {
+      log('One Tap suppressed — falling back to tokenClient popup');
       tokenClient.requestAccessToken({ prompt: 'select_account' });
     }
   });
@@ -204,34 +235,50 @@ function signInGoogle() {
 
 // ID-token flow: decode JWT payload directly (no server needed)
 function onIdToken(resp) {
+  log('onIdToken called, credential length=' + resp.credential.length);
   try {
     const payload = JSON.parse(atob(resp.credential.split('.')[1]));
+    log('ID token decoded: name=' + payload.name + ', email=' + payload.email);
     showProfile(payload.name, payload.email, payload.picture, 'Google');
   } catch(e) {
+    lerr('JWT decode error:', e.message);
     showStatus('Ошибка декодирования токена: ' + e.message, 'error');
   }
 }
 
 // Access-token flow: call Google userinfo endpoint
 function onAccessToken(resp) {
-  if (resp.error) { showStatus('Ошибка: ' + resp.error, 'error'); return; }
+  log('onAccessToken called, error=' + (resp.error || 'none'));
+  if (resp.error) {
+    lerr('Access token error:', resp.error);
+    showStatus('Ошибка: ' + resp.error, 'error');
+    return;
+  }
+  log('Got access token, fetching userinfo...');
   fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
     headers: { Authorization: 'Bearer ' + resp.access_token }
   })
-  .then(r => r.json())
-  .then(u => showProfile(u.name, u.email, u.picture, 'Google'))
-  .catch(e => showStatus('Не удалось получить профиль: ' + e.message, 'error'));
+  .then(r => { log('userinfo response status=' + r.status); return r.json(); })
+  .then(u => {
+    log('userinfo: name=' + u.name + ', email=' + u.email);
+    showProfile(u.name, u.email, u.picture, 'Google');
+  })
+  .catch(e => {
+    lerr('userinfo fetch error:', e.message);
+    showStatus('Не удалось получить профиль: ' + e.message, 'error');
+  });
 }
 
-// ── Apple Sign-In (требует Apple Developer + домен верификацию) ───────────────
+// ── Apple Sign-In ─────────────────────────────────────────────────────────────
 function signInApple() {
+  log('signInApple() called — not configured');
   showStatus('Apple Sign In требует Apple Developer Account и верификацию домена. Используй Google.', 'info');
 }
 </script>
 
 <script src="https://accounts.google.com/gsi/client"
         onload="onGoogleLoad()"
-        onerror="showStatus('Не удалось загрузить Google SDK','error')"
+        onerror="lerr('GIS SDK failed to load'); showStatus('Не удалось загрузить Google SDK','error')"
         async defer></script>
 </body>
 </html>
