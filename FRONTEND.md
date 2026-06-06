@@ -11,7 +11,7 @@
 Add server sync to `list-manager.html` with the smallest possible diff:
 1. One global helper `sendAction(type, data)` — fires a POST to `/api/action` and ignores errors
 2. One `sendAction()` call at the end of each mutation function
-3. Replace the undo button handler to use the server response
+3. One `sendAction()` call at the end of the undo button handler — same rule as #2
 
 The page already loads `list-data.js` as a `<script>` tag — the server will start serving
 that file dynamically from the database. **No change needed to the data-loading code.**
@@ -159,7 +159,13 @@ Add after `render()`:
 
 ---
 
-## 3. Replace the undo button handler
+## 3. Add a `sendAction` call to the undo button handler
+
+Undo follows the **same rule as every other mutation**: the front applies the
+change locally from its own saved data, then fires a sync message to the server.
+No special server round-trip, no waiting for or trusting a server-returned tree —
+that would make undo inconsistent with `add_item`/`edit_item`/etc. and add a
+visible delay to what should be an instant local action.
 
 Find the existing handler (around line 178):
 
@@ -174,33 +180,17 @@ undoBtn.addEventListener('click', () => {
 });
 ```
 
-Replace it entirely with:
+Add one `sendAction(...)` call at the end, exactly like step 2 above:
 
 ```javascript
-undoBtn.addEventListener('click', async () => {
-  // Optimistic: apply local snapshot immediately for fast feedback
-  if (undoSnapshot) {
-    items = undoSnapshot;
-    undoSnapshot = null;
-    undoBtn.disabled = true;
-    render();
-    showToast('Отменено');
-  }
-
-  // Ask server to roll back DB; if it returns a fresh tree, use that instead
-  try {
-    const res = await fetch('/api/action', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ type: 'undo', data: {} })
-    }).then(r => r.json());
-
-    if (res.ok && res.items) {
-      items   = res.items;
-      nextId  = res.nextId;
-      render();
-    }
-  } catch {}
+undoBtn.addEventListener('click', () => {
+  if (!undoSnapshot) return;
+  items = undoSnapshot;
+  undoSnapshot = null;
+  render();
+  undoBtn.disabled = true;
+  showToast('Отменено');
+  sendAction('Undo', {});
 });
 ```
 

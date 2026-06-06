@@ -9,9 +9,10 @@
 ## What to build
 
 Replace the existing static `server.js` with one that:
-1. Serves `GET /list-data.js` from TerminusDB (fallback to static file)
-2. Handles `POST /api/action` for every action type
-3. Maintains a per-session undo log for `type: "undo"`
+1. Serves `GET /document` (and the default-document alias `GET /list-data.js`) from TerminusDB (fallback to static file)
+2. Serves `GET /api/document-check` so the frontend can detect drift from the server's tree
+3. Handles `POST /api/action` for every action type
+4. Maintains a per-session undo log for `type: "Undo"`
 
 No frontend code changes are required.
 
@@ -144,6 +145,17 @@ await terminusReq('POST', `/api/schema/${DB_PATH}`, [
 
 ---
 
+## GET /document and GET /api/document-check
+
+Both load a document's tree the same way `serveListData` does below — query
+TerminusDB for the document (defaulting to `list-data.js` when `id` is omitted),
+convert flat→tree, and respond with `{ id, nextId, items }`. `document-check`
+returns the identical shape; the frontend does the diffing, the server just
+needs to hand back its current authoritative tree.
+
+`GET /list-data.js` stays the JS-file-shaped alias of `GET /document` for the
+default document, so the existing `<script src="list-data.js">` tag keeps working.
+
 ## GET /list-data.js
 
 Query all items, convert flat→tree, emit JS file.
@@ -235,7 +247,7 @@ async function handleAction(body, res) {
       case 'toggle_tag':    await actionToggleTag(data);     break;
       case 'toggle_collapse': await actionToggleCollapse(data); break;
       case 'reorder':       await actionReorder(data);       break;
-      case 'undo':          result = await actionUndo();     break;
+      case 'Undo':          result = await actionUndo();     break;
       default: throw new Error('unknown action type: ' + type);
     }
     jsonReply(res, result);
@@ -400,9 +412,13 @@ async function actionReorder({ flat }) {
 }
 ```
 
-### `undo`
+### `Undo`
 
-The undo log is a simple in-memory stack. Each action pushes its inverse before committing. Undo pops the top entry, re-applies it as a raw action (bypassing the undo log), then returns the full tree.
+The undo log is a simple in-memory stack. Each action pushes its inverse before
+committing. Undo pops the top entry and re-applies it as a raw action (bypassing
+the undo log). The frontend has already reverted its local state from its own
+saved snapshot, so — same as every other action — the response is just `{ ok: true }`;
+no fresh tree needs to be queried or returned.
 
 ```javascript
 const undoLog = []; // [{ type, data }, ...]
@@ -429,11 +445,7 @@ async function actionUndo() {
   // Undo of undo should not re-push; pop the entry we just pushed (if any)
   undoLog.pop();
 
-  // Return fresh tree
-  const { body } = await terminusReq('GET', `/api/document/${DB_PATH}?type=ListItem&as_list=true`);
-  const items  = flatToTree(Array.isArray(body) ? body : []);
-  const nextId = computeNextId(Array.isArray(body) ? body : []);
-  return { ok: true, items, nextId };
+  return { ok: true };
 }
 
 async function restoreItems(docs) {
@@ -467,12 +479,14 @@ server.js
 ├── actionAdd / actionEdit / actionDelete
 ├── actionToggleTag / actionToggleCollapse
 ├── actionReorder / actionUndo / restoreItems
-├── serveListData()
+├── serveListData() / serveDocument() / serveDocumentCheck()
 ├── handleAction()
 └── http.createServer → router
-    ├── GET  /list-data.js  → serveListData()
-    ├── POST /api/action    → handleAction()
-    └── static files        (existing logic)
+    ├── GET  /document            → serveDocument()
+    ├── GET  /api/document-check  → serveDocumentCheck()
+    ├── GET  /list-data.js        → serveListData()
+    ├── POST /api/action          → handleAction()
+    └── static files              (existing logic)
 ```
 
 ---
@@ -481,6 +495,10 @@ server.js
 
 - [ ] `GET /list-data.js` returns valid JS when TerminusDB is up
 - [ ] `GET /list-data.js` falls back to static file when TerminusDB is down
+- [ ] `GET /document` returns the default document when `id` is omitted
+- [ ] `GET /document?id=<id>` returns the requested document and its subtree
+- [ ] `GET /document?id=<unknown>` returns `{ ok: false, error: "document not found" }`
+- [ ] `GET /api/document-check` returns the server's current tree in the same shape as `GET /document`
 - [ ] `add_item` inserts a root item; reload shows it
 - [ ] `add_item` inserts a child item under correct parent; reload shows it
 - [ ] `edit_item` updates line1/line2; reload shows change
@@ -490,9 +508,9 @@ server.js
 - [ ] `toggle_tag` removes tag on second call; reload confirms removal
 - [ ] `toggle_collapse` flips collapsed; reload persists state
 - [ ] `reorder` moves item; reload shows new order
-- [ ] `undo` after add removes item; response includes updated tree
-- [ ] `undo` after delete restores item; response includes updated tree
-- [ ] `undo` when nothing to undo returns `{ ok: false, error: "nothing to undo" }`
+- [ ] `Undo` after add removes the item from TerminusDB (reload confirms)
+- [ ] `Undo` after delete restores the item in TerminusDB (reload confirms)
+- [ ] `Undo` when nothing to undo returns `{ ok: false, error: "nothing to undo" }`
 - [ ] Unknown action type returns `{ ok: false, error: "..." }` (HTTP 200)
 - [ ] TerminusDB auth failure returns `{ ok: false, error: "..." }` (no crash)
 

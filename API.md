@@ -14,10 +14,63 @@ http://localhost:3000
 
 ---
 
+## GET /document
+
+Returns a document and its full descendant tree as nested JSON — the same shape
+the frontend natively renders as a nested list.
+
+**Request**
+
+```
+GET /document
+GET /document?id=<documentId>
+```
+
+| Param | Type | Required | Notes |
+|-------|------|----------|-------|
+| `id` | string | no | Identifies which document to fetch. When omitted, the server returns the default document — the one named `list-data.js` (see below). |
+
+**Response**
+
+```json
+{
+  "id": "list-data.js",
+  "nextId": 33,
+  "items": [
+    {
+      "id": 1,
+      "line1": "Молоко 3.2%",
+      "line2": "2 пакета",
+      "tags": ["Важное"],
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "id": 2,
+      "line1": "Хлеб ржаной",
+      "children": [
+        { "id": 26, "line1": "Бородинский", "line2": "400 г", "children": [] },
+        { "id": 27, "line1": "Столичный",   "line2": "500 г", "children": [] }
+      ]
+    }
+  ]
+}
+```
+
+Rules:
+- `nextId` — integer, equals max item `id` across the returned tree + 1
+- Every item has `id` (integer), `line1` (string), `children` (array, may be empty)
+- Optional fields omitted when absent: `line2`, `tags`, `collapsed`
+- Children sorted by their position under their parent; root items sorted by their position
+- If `id` does not match any document, respond `{ "ok": false, "error": "document not found" }`
+
+---
+
 ## GET /list-data.js
 
-Returns a JavaScript file that the page loads as a `<script>` tag.
-The file sets two global variables in the exact same format as the static `list-data.js`.
+The default-document case of `GET /document`, served as an executable JavaScript
+file so the page can keep loading it as a `<script>` tag with **no change to the
+data-loading code**:
 
 **Response**
 
@@ -28,32 +81,44 @@ Content-Type: application/javascript
 ```javascript
 /* auto-generated — do not edit */
 const nextId = 33;
-const items = [
-  {
-    "id": 1,
-    "line1": "Молоко 3.2%",
-    "line2": "2 пакета",
-    "tags": ["Важное"],
-    "collapsed": false,
-    "children": []
-  },
-  {
-    "id": 2,
-    "line1": "Хлеб ржаной",
-    "children": [
-      { "id": 26, "line1": "Бородинский", "line2": "400 г", "children": [] },
-      { "id": 27, "line1": "Столичный",   "line2": "500 г", "children": [] }
-    ]
-  }
-];
+const items = [ /* same nested shape as GET /document */ ];
 ```
 
 Rules:
-- `nextId` — integer, equals max item `id` across all items + 1
-- Every item has `id` (integer), `line1` (string), `children` (array, may be empty)
-- Optional fields omitted when absent: `line2`, `tags`, `collapsed`
-- Children sorted by their position in the list; root items sorted by their position
+- Same lookup, ordering, and field rules as `GET /document` (defaulting to the
+  document named `list-data.js`)
 - If the database is unreachable, serve the static `list-data.js` file from disk unchanged
+
+---
+
+## GET /api/document-check
+
+Lets the frontend verify that its local copy of the document tree matches the
+server's current state, and surface drift to the user — e.g. from a missed
+`sendAction` call or a concurrent edit made elsewhere — instead of silently
+trusting local state.
+
+**Request**
+
+```
+GET /api/document-check?id=<documentId>
+```
+
+`id` is optional, same default as `GET /document`.
+
+**Response**
+
+```json
+{
+  "id": "list-data.js",
+  "nextId": 33,
+  "items": [ /* the server's current tree, same nested shape as GET /document */ ]
+}
+```
+
+The frontend compares this tree against its local `items`/`nextId` and, on any
+discrepancy, shows the difference to the user (e.g. a diff view) rather than
+overwriting local state automatically.
 
 ---
 
@@ -71,20 +136,10 @@ Content-Type: application/json
 { "type": "<action_type>", "data": { ... } }
 ```
 
-**Success response** (HTTP 200)
+**Success response** (HTTP 200) — same shape for every action, including `Undo`:
 
 ```json
 { "ok": true }
-```
-
-**Undo success response** (HTTP 200, only for `type: "undo"`)
-
-```json
-{
-  "ok": true,
-  "items": [ ...same nested structure as list-data.js... ],
-  "nextId": 32
-}
 ```
 
 **Error response** (HTTP 200, `ok: false`)
@@ -231,26 +286,24 @@ Server applies only the items whose position or parentId changed.
 
 ---
 
-#### `undo`
+#### `Undo`
 
-Roll back the most recent mutation.
+Roll back the most recent mutation. Like every other action, the frontend has
+already reverted the mutation locally (from its own saved snapshot) before
+sending this — the server doesn't need to, and the frontend doesn't wait for it
+to, return a fresh tree.
 
 ```json
 {
-  "type": "undo",
+  "type": "Undo",
   "data": {}
 }
 ```
 
-Response includes the full reloaded item tree so the frontend can update in place
-without a full page reload:
+**Response** — same generic shape as every other action:
 
 ```json
-{
-  "ok": true,
-  "items": [ ... ],
-  "nextId": 32
-}
+{ "ok": true }
 ```
 
 If there is nothing to undo:
