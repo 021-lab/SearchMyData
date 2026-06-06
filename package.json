@@ -1,0 +1,15 @@
+{
+  "name": "searchmydata",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "test:server": "node --test tests/server.test.js",
+    "test:e2e": "playwright test tests/e2e-roundtrip.spec.js",
+    "test": "npm run test:server && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.0"
+  }
+}
