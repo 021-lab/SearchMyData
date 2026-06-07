@@ -129,16 +129,60 @@ function flattenForAction(tree) {
 
 let pendingActions = Promise.resolve();
 
+function replaceItemsFromServer(doc) {
+  items = Array.isArray(doc?.items) ? doc.items : [];
+  nextId = Number.isInteger(doc?.nextId) ? doc.nextId : 1;
+  undoSnapshot = null;
+  undoBtn.disabled = true;
+  render();
+}
+
+async function syncFromServer(errorMessage) {
+  const res = await fetch('/document', { cache: 'no-store' });
+  if (!res.ok) throw new Error(`document reload failed: ${res.status}`);
+  replaceItemsFromServer(await res.json());
+  if (errorMessage) showToast(errorMessage);
+}
+
+function bootstrapFromServer() {
+  pendingActions = pendingActions
+    .then(() => syncFromServer())
+    .catch((err) => {
+      console.error('Initial document load failed', err);
+      render();
+    });
+
+  return pendingActions;
+}
+
 function sendAction(type, data) {
   pendingActions = pendingActions
     .catch(() => {})
-    .then(() => fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, data: data || {} })
-    }))
-    .then(() => undefined)
-    .catch(() => undefined);
+    .then(async () => {
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, data: data || {} })
+      });
+      let payload = {};
+      try {
+        payload = await res.json();
+      } catch {
+        throw new Error(`invalid server response: ${res.status}`);
+      }
+      if (!res.ok || payload?.ok === false) {
+        throw new Error(payload?.error || `request failed: ${res.status}`);
+      }
+    })
+    .catch(async (err) => {
+      console.error('Action sync failed', type, err);
+      try {
+        await syncFromServer(`Не сохранено: ${err.message}`);
+      } catch (reloadErr) {
+        console.error('Document reload failed', reloadErr);
+        showToast(`Ошибка сохранения: ${err.message}`);
+      }
+    });
 
   return pendingActions;
 }
@@ -1086,6 +1130,7 @@ function pttReset() {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 render();
+bootstrapFromServer();
 </script>
 </body>
 </html>

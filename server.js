@@ -68,6 +68,14 @@ function dbPath() {
   return `${encodeURIComponent(team)}/${encodeURIComponent(db)}`;
 }
 
+function withCommitMeta(apiPath, message) {
+  const { user } = envConfig();
+  const separator = apiPath.includes('?') ? '&' : '?';
+  const author = encodeURIComponent(user || 'admin');
+  const commitMessage = encodeURIComponent(message || 'update');
+  return `${apiPath}${separator}author=${author}&message=${commitMessage}`;
+}
+
 function terminusReq(method, apiPath, body) {
   const config = envConfig();
   if (!config.terminusUrl) {
@@ -144,18 +152,24 @@ async function listItemsFromDb() {
 }
 
 async function getItem(id) {
-  const { status, body } = await terminusReq('GET', `/api/document/${dbPath()}/ListItem/${encodeURIComponent(id)}`);
-  if (status !== 200) throw new Error(`item ${id} not found`);
-  return body;
+  requireInteger(id, 'id');
+  const docs = await listItemsFromDb();
+  const existing = docByItemId(docs).get(id);
+  if (!existing) throw new Error(`item ${id} not found`);
+  return existing;
 }
 
 async function writeDocs(docs) {
-  const { status } = await terminusReq('POST', `/api/document/${dbPath()}`, docs);
+  const { status } = await terminusReq(
+    'POST',
+    withCommitMeta(`/api/document/${dbPath()}`, 'write ListItem docs'),
+    docs
+  );
   if (status !== 200 && status !== 201) throw new Error('db write failed');
 }
 
 async function patchItem(id, patch) {
-  const { status } = await terminusReq('POST', `/api/patch/${dbPath()}`, {
+  const { status } = await terminusReq('POST', withCommitMeta(`/api/patch/${dbPath()}`, `patch ListItem/${id}`), {
     document_id: `ListItem/${id}`,
     patch,
   });
@@ -164,8 +178,19 @@ async function patchItem(id, patch) {
 
 async function deleteItemDoc(id) {
   const documentId = encodeURIComponent(`ListItem/${id}`);
-  const { status } = await terminusReq('DELETE', `/api/document/${dbPath()}?id=${documentId}`);
-  if (status !== 200) throw new Error('db delete failed');
+  const { status } = await terminusReq(
+    'DELETE',
+    withCommitMeta(`/api/document/${dbPath()}?id=${documentId}`, `delete ListItem/${id}`)
+  );
+  if (status !== 200 && status !== 204) throw new Error('db delete failed');
+}
+
+async function replaceAllDocs(nextDocs, currentDocs) {
+  const existingDocs = currentDocs || await listItemsFromDb();
+  for (const doc of existingDocs) {
+    await deleteItemDoc(itemIdFromDoc(doc));
+  }
+  if (nextDocs.length > 0) await writeDocs(nextDocs);
 }
 
 function itemIdFromDoc(doc) {
@@ -359,20 +384,17 @@ async function actionEdit(data, options) {
   requireInteger(id, 'id');
   requireNonEmptyString(data?.line1, 'line1');
 
-  const existing = await getItem(id);
-  const patch = {
-    line1: { '@op': 'SwapValue', '@before': existing.line1, '@after': data?.line1 },
-  };
+  const docs = await listItemsFromDb();
+  const existing = requireExistingItem(id, docs);
+  const nextDocs = docs.map((doc) => {
+    if (itemIdFromDoc(doc) !== id) return doc;
+    const updated = { ...doc, line1: data.line1 };
+    if (data?.line2 === undefined) delete updated.line2;
+    else updated.line2 = data.line2;
+    return updated;
+  });
 
-  if (data?.line2 === undefined) {
-    if (existing.line2 !== undefined) {
-      patch.line2 = { '@op': 'SwapValue', '@before': existing.line2, '@after': null };
-    }
-  } else {
-    patch.line2 = { '@op': 'SwapValue', '@before': existing.line2 ?? null, '@after': data.line2 };
-  }
-
-  await patchItem(id, patch);
+  await replaceAllDocs(nextDocs, docs);
   if (shouldRecordUndo(options)) {
     pushUndo({
       type: 'edit_item',
@@ -389,9 +411,8 @@ async function actionDelete(data, options) {
   const snapshot = docs.filter((doc) => ids.has(itemIdFromDoc(doc)));
   if (snapshot.length === 0) throw new Error(`item ${data?.id} not found`);
 
-  for (const itemId of ids) {
-    await deleteItemDoc(itemId);
-  }
+  const nextDocs = docs.filter((doc) => !ids.has(itemIdFromDoc(doc)));
+  await replaceAllDocs(nextDocs, docs);
 
   if (shouldRecordUndo(options)) pushUndo({ type: 'restore_items', data: { docs: snapshot } }, options?.sessionId);
 }
@@ -402,13 +423,17 @@ async function actionToggleTag(data, options) {
   requireInteger(id, 'id');
   requireNonEmptyString(tag, 'tag');
 
-  const existing = await getItem(id);
+  const docs = await listItemsFromDb();
+  const existing = requireExistingItem(id, docs);
   const before = Array.isArray(existing.tags) ? existing.tags : [];
   const after = before.includes(tag) ? before.filter((candidate) => candidate !== tag) : [...before, tag];
 
-  await patchItem(id, {
-    tags: { '@op': 'SwapValue', '@before': before, '@after': after },
+  const nextDocs = docs.map((doc) => {
+    if (itemIdFromDoc(doc) !== id) return doc;
+    return { ...doc, tags: after };
   });
+
+  await replaceAllDocs(nextDocs, docs);
   if (shouldRecordUndo(options)) pushUndo({ type: 'toggle_tag', data: { id, tag } }, options?.sessionId);
 }
 
@@ -416,12 +441,17 @@ async function actionToggleCollapse(data, options) {
   const id = data?.id;
   requireInteger(id, 'id');
 
-  const existing = await getItem(id);
-  const before = existing.collapsed ?? null;
-
-  await patchItem(id, {
-    collapsed: { '@op': 'SwapValue', '@before': before, '@after': !existing.collapsed },
+  const docs = await listItemsFromDb();
+  const existing = requireExistingItem(id, docs);
+  const nextDocs = docs.map((doc) => {
+    if (itemIdFromDoc(doc) !== id) return doc;
+    const updated = { ...doc };
+    if (doc.collapsed) delete updated.collapsed;
+    else updated.collapsed = true;
+    return updated;
   });
+
+  await replaceAllDocs(nextDocs, docs);
   if (shouldRecordUndo(options)) pushUndo({ type: 'toggle_collapse', data: { id } }, options?.sessionId);
 }
 
@@ -492,20 +522,11 @@ async function actionReorder(data, options) {
   for (const entry of flat) {
     const existing = byId.get(entry.id);
     if (!existing) continue;
-
-    const beforeParentId = existing.parentId ?? null;
-    const afterParentId = entry.parentId ?? null;
-    const patch = {};
-
-    if (beforeParentId !== afterParentId) {
-      patch.parentId = { '@op': 'SwapValue', '@before': beforeParentId, '@after': afterParentId };
-    }
-    if (existing.position !== entry.position) {
-      patch.position = { '@op': 'SwapValue', '@before': existing.position, '@after': entry.position };
-    }
-
-    if (Object.keys(patch).length > 0) await patchItem(entry.id, patch);
+    existing.parentId = entry.parentId ?? null;
+    existing.position = entry.position;
   }
+
+  await replaceAllDocs([...byId.values()], docs);
 
   if (shouldRecordUndo(options)) pushUndo({ type: 'reorder', data: { flat: previousFlat } }, options?.sessionId);
 }
@@ -638,19 +659,21 @@ async function documentPayload(documentId = DEFAULT_DOCUMENT_ID) {
   };
 }
 
-function sendJson(res, status, body) {
+function sendJson(res, status, body, extraHeaders = {}) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(payload),
+    ...extraHeaders,
   });
   res.end(payload);
 }
 
-function sendText(res, status, contentType, body) {
+function sendText(res, status, contentType, body, extraHeaders = {}) {
   res.writeHead(status, {
     'Content-Type': contentType,
     'Content-Length': Buffer.byteLength(body),
+    ...extraHeaders,
   });
   res.end(body);
 }
@@ -659,9 +682,9 @@ async function serveDocument(req, res) {
   try {
     const payload = await documentPayload(documentIdFromReq(req));
     const status = payload.ok === false && payload.error === 'document not found' ? 404 : 200;
-    sendJson(res, status, payload);
+    sendJson(res, status, payload, { 'Cache-Control': 'no-store' });
   } catch (err) {
-    sendJson(res, 502, { ok: false, error: err.message });
+    sendJson(res, 502, { ok: false, error: err.message }, { 'Cache-Control': 'no-store' });
   }
 }
 
@@ -672,12 +695,19 @@ async function serveDocumentCheck(req, res) {
 async function serveListData(req, res) {
   try {
     const payload = await documentPayload();
-    sendText(res, 200, 'application/javascript; charset=utf-8', buildListDataJs(payload.items, payload.nextId));
+    sendText(
+      res,
+      200,
+      'application/javascript; charset=utf-8',
+      buildListDataJs(payload.items, payload.nextId),
+      { 'Cache-Control': 'no-store' }
+    );
   } catch {
     const fallback = fs.readFileSync(path.join(ROOT, 'list-data.js'));
     res.writeHead(200, {
       'Content-Type': 'application/javascript; charset=utf-8',
       'Content-Length': fallback.length,
+      'Cache-Control': 'no-store',
     });
     res.end(fallback);
   }
