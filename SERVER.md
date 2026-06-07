@@ -225,9 +225,12 @@ function computeNextId(docs) {
 }
 
 function buildListDataJs(items, nextId) {
-  return `/* auto-generated — do not edit */\nconst nextId = ${nextId};\nconst items = ${JSON.stringify(items, null, 2)};\n`;
+  return `/* auto-generated — do not edit */\nlet nextId = ${nextId};\nlet items = ${JSON.stringify(items, null, 2)};\n`;
 }
 ```
+
+The generated bindings must stay mutable because the browser updates `items`
+locally and increments `nextId` before syncing the action back to the server.
 
 ---
 
@@ -261,6 +264,12 @@ function jsonReply(res, obj) {
   res.end(JSON.stringify(obj));
 }
 ```
+
+---
+
+## Remote TerminusDB UAT
+
+For the direct-URL remote database checklist, see `docs/uat/terminusdb-roundtrip.md`.
 
 ---
 
