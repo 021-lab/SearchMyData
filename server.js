@@ -1,12 +1,14 @@
 'use strict';
 
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const http = require('node:http');
 const https = require('node:https');
 const path = require('node:path');
 
 const ROOT = __dirname;
 const DEFAULT_DOCUMENT_ID = 'list-data.js';
+const SESSION_COOKIE = 'smd_session';
 const STATIC_ALLOWLIST = new Set([
   '/',
   '/list-manager.html',
@@ -58,6 +60,12 @@ function joinUrl(base, apiPath) {
 function terminusTimeoutMs() {
   const parsed = Number(process.env.TERMINUS_TIMEOUT_MS || 10000);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 10000;
+}
+
+function dbPath() {
+  const { team, db } = envConfig();
+  if (!team || !db) throw new Error('TERMINUS_TEAM and TERMINUS_DB are required');
+  return `${encodeURIComponent(team)}/${encodeURIComponent(db)}`;
 }
 
 function terminusReq(method, apiPath, body) {
@@ -126,16 +134,38 @@ function terminusReq(method, apiPath, body) {
 }
 
 async function listItemsFromDb() {
-  const { team, db } = envConfig();
-  if (!team || !db) throw new Error('TERMINUS_TEAM and TERMINUS_DB are required');
-
-  const apiPath = `/api/document/${encodeURIComponent(team)}/${encodeURIComponent(db)}?type=ListItem&as_list=true`;
+  const apiPath = `/api/document/${dbPath()}?type=ListItem&as_list=true`;
   const { status, body } = await terminusReq('GET', apiPath);
   if (status !== 200 || !Array.isArray(body)) {
     throw new Error('failed to load ListItem documents');
   }
 
   return body;
+}
+
+async function getItem(id) {
+  const { status, body } = await terminusReq('GET', `/api/document/${dbPath()}/ListItem/${encodeURIComponent(id)}`);
+  if (status !== 200) throw new Error(`item ${id} not found`);
+  return body;
+}
+
+async function writeDocs(docs) {
+  const { status } = await terminusReq('POST', `/api/document/${dbPath()}`, docs);
+  if (status !== 200 && status !== 201) throw new Error('db write failed');
+}
+
+async function patchItem(id, patch) {
+  const { status } = await terminusReq('POST', `/api/patch/${dbPath()}`, {
+    document_id: `ListItem/${id}`,
+    patch,
+  });
+  if (status !== 200) throw new Error('db patch failed');
+}
+
+async function deleteItemDoc(id) {
+  const documentId = encodeURIComponent(`ListItem/${id}`);
+  const { status } = await terminusReq('DELETE', `/api/document/${dbPath()}?id=${documentId}`);
+  if (status !== 200) throw new Error('db delete failed');
 }
 
 function itemIdFromDoc(doc) {
@@ -197,6 +227,397 @@ function computeNextId(docs) {
 
 function buildListDataJs(items, nextId) {
   return `/* auto-generated - do not edit */\nconst nextId = ${nextId};\nconst items = ${JSON.stringify(items, null, 2)};\n`;
+}
+
+const undoSessions = new Map();
+
+function resetUndoLog() {
+  undoSessions.clear();
+}
+
+function parseCookies(header) {
+  const cookies = new Map();
+  if (!header) return cookies;
+
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=');
+    if (index === -1) continue;
+
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    if (key) cookies.set(key, value);
+  }
+
+  return cookies;
+}
+
+function resolveSessionId(req, res) {
+  const cookies = parseCookies(req.headers.cookie);
+  const existing = cookies.get(SESSION_COOKIE);
+  if (existing && /^[A-Za-z0-9_-]{16,}$/.test(existing)) return existing;
+
+  const sessionId = crypto.randomBytes(18).toString('base64url');
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${sessionId}; Path=/; HttpOnly; SameSite=Lax`);
+  return sessionId;
+}
+
+function undoStackFor(sessionId = 'default') {
+  if (!undoSessions.has(sessionId)) undoSessions.set(sessionId, []);
+  return undoSessions.get(sessionId);
+}
+
+function shouldRecordUndo(options) {
+  return options?.recordUndo !== false;
+}
+
+function pushUndo(entry, sessionId) {
+  const undoLog = undoStackFor(sessionId);
+  undoLog.push(entry);
+  if (undoLog.length > 50) undoLog.shift();
+}
+
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function requireInteger(value, name) {
+  if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`);
+}
+
+function requireNonEmptyString(value, name) {
+  if (!isNonEmptyString(value)) throw new Error(`${name} must be a non-empty string`);
+}
+
+function docByItemId(docs) {
+  return new Map(docs.map((doc) => [itemIdFromDoc(doc), doc]));
+}
+
+function requireExistingItem(id, docs) {
+  requireInteger(id, 'id');
+  const item = docByItemId(docs).get(id);
+  if (!item) throw new Error(`item ${id} not found`);
+  return item;
+}
+
+function validateParent(parentId, docs) {
+  if (parentId === null) return;
+  if (!Number.isInteger(parentId)) throw new Error('parentId must be null or an integer');
+  if (!docByItemId(docs).has(parentId)) throw new Error(`parent ${parentId} not found`);
+}
+
+function collectSubtree(rootId, docs) {
+  const ids = new Set([rootId]);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (const doc of docs) {
+      const itemId = itemIdFromDoc(doc);
+      if (Number.isInteger(itemId) && !ids.has(itemId) && ids.has(doc.parentId)) {
+        ids.add(itemId);
+        changed = true;
+      }
+    }
+  }
+
+  return ids;
+}
+
+async function nextPositionFor(parentId) {
+  const docs = await listItemsFromDb();
+  return docs.filter((doc) => (doc.parentId ?? null) === (parentId ?? null)).length;
+}
+
+async function actionAdd(data, options) {
+  const id = data?.id;
+  const docs = await listItemsFromDb();
+  const parentId = data?.parentId ?? null;
+
+  requireInteger(id, 'id');
+  requireNonEmptyString(data?.line1, 'line1');
+  if (!Object.prototype.hasOwnProperty.call(data || {}, 'parentId')) throw new Error('parentId is required');
+  validateParent(parentId, docs);
+  if (docByItemId(docs).has(id)) throw new Error(`item ${id} already exists`);
+
+  const doc = {
+    '@type': 'ListItem',
+    '@id': `ListItem/${id}`,
+    itemId: id,
+    line1: data?.line1,
+    ...(data?.line2 ? { line2: data.line2 } : {}),
+    tags: [],
+    parentId,
+    position: docs.filter((candidate) => (candidate.parentId ?? null) === parentId).length,
+  };
+
+  await writeDocs([doc]);
+  if (shouldRecordUndo(options)) pushUndo({ type: 'delete_item', data: { id } }, options?.sessionId);
+}
+
+async function actionEdit(data, options) {
+  const id = data?.id;
+  requireInteger(id, 'id');
+  requireNonEmptyString(data?.line1, 'line1');
+
+  const existing = await getItem(id);
+  const patch = {
+    line1: { '@op': 'SwapValue', '@before': existing.line1, '@after': data?.line1 },
+  };
+
+  if (data?.line2 === undefined) {
+    if (existing.line2 !== undefined) {
+      patch.line2 = { '@op': 'SwapValue', '@before': existing.line2, '@after': null };
+    }
+  } else {
+    patch.line2 = { '@op': 'SwapValue', '@before': existing.line2 ?? null, '@after': data.line2 };
+  }
+
+  await patchItem(id, patch);
+  if (shouldRecordUndo(options)) {
+    pushUndo({
+      type: 'edit_item',
+      data: { id, line1: existing.line1, line2: existing.line2 },
+    }, options?.sessionId);
+  }
+}
+
+async function actionDelete(data, options) {
+  requireInteger(data?.id, 'id');
+
+  const docs = await listItemsFromDb();
+  const ids = collectSubtree(data?.id, docs);
+  const snapshot = docs.filter((doc) => ids.has(itemIdFromDoc(doc)));
+  if (snapshot.length === 0) throw new Error(`item ${data?.id} not found`);
+
+  for (const itemId of ids) {
+    await deleteItemDoc(itemId);
+  }
+
+  if (shouldRecordUndo(options)) pushUndo({ type: 'restore_items', data: { docs: snapshot } }, options?.sessionId);
+}
+
+async function actionToggleTag(data, options) {
+  const id = data?.id;
+  const tag = data?.tag;
+  requireInteger(id, 'id');
+  requireNonEmptyString(tag, 'tag');
+
+  const existing = await getItem(id);
+  const before = Array.isArray(existing.tags) ? existing.tags : [];
+  const after = before.includes(tag) ? before.filter((candidate) => candidate !== tag) : [...before, tag];
+
+  await patchItem(id, {
+    tags: { '@op': 'SwapValue', '@before': before, '@after': after },
+  });
+  if (shouldRecordUndo(options)) pushUndo({ type: 'toggle_tag', data: { id, tag } }, options?.sessionId);
+}
+
+async function actionToggleCollapse(data, options) {
+  const id = data?.id;
+  requireInteger(id, 'id');
+
+  const existing = await getItem(id);
+  const before = existing.collapsed ?? null;
+
+  await patchItem(id, {
+    collapsed: { '@op': 'SwapValue', '@before': before, '@after': !existing.collapsed },
+  });
+  if (shouldRecordUndo(options)) pushUndo({ type: 'toggle_collapse', data: { id } }, options?.sessionId);
+}
+
+function validateReorderFlat(flat, docs) {
+  if (!Array.isArray(flat)) throw new Error('flat must be an array');
+
+  const currentIds = new Set(docs.map(itemIdFromDoc));
+  const seen = new Set();
+  const parentById = new Map();
+  const siblings = new Map();
+
+  for (const entry of flat) {
+    requireInteger(entry?.id, 'id');
+    if (seen.has(entry.id)) throw new Error(`duplicate item ${entry.id}`);
+    if (!currentIds.has(entry.id)) throw new Error(`unknown item ${entry.id}`);
+    seen.add(entry.id);
+  }
+
+  for (const id of currentIds) {
+    if (!seen.has(id)) throw new Error(`missing item ${id}`);
+  }
+
+  for (const entry of flat) {
+    const parentId = entry.parentId ?? null;
+    if (parentId !== null && !Number.isInteger(parentId)) throw new Error('parentId must be null or an integer');
+    if (parentId === entry.id) throw new Error(`item ${entry.id} cannot be its own parent`);
+    if (parentId !== null && !currentIds.has(parentId)) throw new Error(`parent ${parentId} not found`);
+    requireInteger(entry.position, 'position');
+
+    parentById.set(entry.id, parentId);
+    const key = parentId === null ? 'root' : String(parentId);
+    if (!siblings.has(key)) siblings.set(key, []);
+    siblings.get(key).push(entry.position);
+  }
+
+  for (const id of currentIds) {
+    const visited = new Set();
+    let parentId = parentById.get(id);
+    while (parentId !== null) {
+      if (parentId === id || visited.has(parentId)) throw new Error(`parent links create a cycle at item ${id}`);
+      visited.add(parentId);
+      parentId = parentById.get(parentId) ?? null;
+    }
+  }
+
+  for (const [parentKey, positions] of siblings) {
+    positions.sort((a, b) => a - b);
+    for (let index = 0; index < positions.length; index += 1) {
+      if (positions[index] !== index) {
+        throw new Error(`positions for parent ${parentKey} must be contiguous`);
+      }
+    }
+  }
+}
+
+async function actionReorder(data, options) {
+  const flat = data?.flat;
+  const docs = await listItemsFromDb();
+  validateReorderFlat(flat, docs);
+
+  const byId = new Map(docs.map((doc) => [itemIdFromDoc(doc), doc]));
+  const previousFlat = docs.map((doc) => ({
+    id: itemIdFromDoc(doc),
+    parentId: doc.parentId ?? null,
+    position: doc.position,
+  }));
+
+  for (const entry of flat) {
+    const existing = byId.get(entry.id);
+    if (!existing) continue;
+
+    const beforeParentId = existing.parentId ?? null;
+    const afterParentId = entry.parentId ?? null;
+    const patch = {};
+
+    if (beforeParentId !== afterParentId) {
+      patch.parentId = { '@op': 'SwapValue', '@before': beforeParentId, '@after': afterParentId };
+    }
+    if (existing.position !== entry.position) {
+      patch.position = { '@op': 'SwapValue', '@before': existing.position, '@after': entry.position };
+    }
+
+    if (Object.keys(patch).length > 0) await patchItem(entry.id, patch);
+  }
+
+  if (shouldRecordUndo(options)) pushUndo({ type: 'reorder', data: { flat: previousFlat } }, options?.sessionId);
+}
+
+async function restoreItems(docs, options) {
+  await writeDocs(docs);
+  if (shouldRecordUndo(options)) {
+    for (const doc of docs) {
+      pushUndo({ type: 'delete_item', data: { id: itemIdFromDoc(doc) } }, options?.sessionId);
+    }
+  }
+}
+
+async function applyUndoEntry(entry) {
+  const options = { recordUndo: false };
+  switch (entry.type) {
+    case 'delete_item':
+      await actionDelete(entry.data, options);
+      return;
+    case 'edit_item':
+      await actionEdit(entry.data, options);
+      return;
+    case 'restore_items':
+      await restoreItems(entry.data.docs, options);
+      return;
+    case 'toggle_tag':
+      await actionToggleTag(entry.data, options);
+      return;
+    case 'toggle_collapse':
+      await actionToggleCollapse(entry.data, options);
+      return;
+    case 'reorder':
+      await actionReorder(entry.data, options);
+      return;
+    default:
+      throw new Error(`unknown undo type: ${entry.type}`);
+  }
+}
+
+async function actionUndo(sessionId) {
+  const undoLog = undoStackFor(sessionId);
+  if (undoLog.length === 0) return { ok: false, error: 'nothing to undo' };
+
+  const entry = undoLog[undoLog.length - 1];
+  await applyUndoEntry(entry);
+  undoLog.pop();
+  return { ok: true };
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      data += chunk;
+    });
+    req.on('end', () => {
+      if (!data) {
+        resolve({});
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(data));
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+async function handleAction(req, res) {
+  try {
+    const sessionId = resolveSessionId(req, res);
+    const body = await readJsonBody(req);
+    const type = body?.type;
+    const data = body?.data || {};
+    const options = { sessionId };
+    let result = { ok: true };
+
+    switch (type) {
+      case 'add_item':
+        await actionAdd(data, options);
+        break;
+      case 'edit_item':
+        await actionEdit(data, options);
+        break;
+      case 'delete_item':
+        await actionDelete(data, options);
+        break;
+      case 'toggle_tag':
+        await actionToggleTag(data, options);
+        break;
+      case 'toggle_collapse':
+        await actionToggleCollapse(data, options);
+        break;
+      case 'reorder':
+        await actionReorder(data, options);
+        break;
+      case 'Undo':
+        result = await actionUndo(sessionId);
+        break;
+      default:
+        result = { ok: false, error: `unknown action type: ${type}` };
+        break;
+    }
+
+    sendJson(res, 200, result);
+  } catch (err) {
+    sendJson(res, 200, { ok: false, error: err.message });
+  }
 }
 
 function documentIdFromReq(req) {
@@ -344,7 +765,7 @@ async function route(req, res) {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/action') {
-    sendJson(res, 200, { ok: false, error: 'not implemented' });
+    await handleAction(req, res);
     return;
   }
 
@@ -358,6 +779,7 @@ async function route(req, res) {
 
 function createServer() {
   loadEnv();
+  resetUndoLog();
   return http.createServer((req, res) => {
     route(req, res).catch((err) => {
       sendJson(res, 500, { ok: false, error: err.message });
@@ -373,17 +795,34 @@ if (require.main === module) {
 }
 
 module.exports = {
+  actionAdd,
+  actionDelete,
+  actionEdit,
+  actionReorder,
+  actionToggleCollapse,
+  actionToggleTag,
+  actionUndo,
   buildListDataJs,
+  collectSubtree,
   computeNextId,
   createServer,
+  dbPath,
   documentPayload,
   flatToTree,
+  getItem,
+  handleAction,
   listItemsFromDb,
   loadEnv,
+  nextPositionFor,
+  parseCookies,
+  pushUndo,
+  resolveSessionId,
   route,
   serveDocument,
   serveDocumentCheck,
   serveListData,
   serveStatic,
   terminusReq,
+  restoreItems,
+  validateReorderFlat,
 };

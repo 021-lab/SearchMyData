@@ -54,6 +54,51 @@ function toTerminusDoc(doc) {
   };
 }
 
+function normalizeTerminusDoc(doc) {
+  return {
+    '@type': 'ListItem',
+    '@id': doc['@id'] || `ListItem/${doc.itemId}`,
+    itemId: doc.itemId,
+    line1: doc.line1,
+    ...(doc.line2 ? { line2: doc.line2 } : {}),
+    tags: Array.isArray(doc.tags) ? doc.tags : [],
+    ...(doc.collapsed ? { collapsed: doc.collapsed } : {}),
+    parentId: doc.parentId ?? null,
+    position: doc.position,
+  };
+}
+
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function validateTerminusDoc(doc) {
+  if (doc?.['@type'] !== 'ListItem') return 'document @type must be ListItem';
+  if (!Number.isInteger(doc.itemId)) return 'document itemId must be an integer';
+  if (!isNonEmptyString(doc.line1)) return 'document line1 must be a non-empty string';
+  if (!Number.isInteger(doc.position)) return 'document position must be an integer';
+  if (
+    Object.prototype.hasOwnProperty.call(doc, 'parentId') &&
+    doc.parentId !== null &&
+    !Number.isInteger(doc.parentId)
+  ) {
+    return 'document parentId must be null or an integer';
+  }
+  if (Object.prototype.hasOwnProperty.call(doc, 'tags') && !Array.isArray(doc.tags)) {
+    return 'document tags must be an array';
+  }
+
+  return undefined;
+}
+
+function storedValue(doc, key) {
+  return Object.prototype.hasOwnProperty.call(doc, key) ? doc[key] : null;
+}
+
+function valuesEqual(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 function createSeedDocs() {
   return SEED_DOCS.map(toTerminusDoc);
 }
@@ -123,6 +168,93 @@ function createFakeTerminusDb() {
         url.searchParams.get('as_list') === 'true'
       ) {
         sendJson(res, 200, clone(docs));
+        return;
+      }
+
+      if (
+        req.method === 'POST' &&
+        parts[0] === 'api' &&
+        parts[1] === 'document' &&
+        parts.length === 4
+      ) {
+        const body = await readBody(req);
+        if (!Array.isArray(body)) {
+          sendJson(res, 400, { ok: false, error: 'expected document array' });
+          return;
+        }
+
+        const validationError = body.map(validateTerminusDoc).find(Boolean);
+        if (validationError) {
+          sendJson(res, 400, { ok: false, error: validationError });
+          return;
+        }
+
+        const nextDocs = body.map(normalizeTerminusDoc);
+        for (const doc of nextDocs) {
+          const index = docs.findIndex((candidate) => candidate.itemId === doc.itemId);
+          if (index === -1) docs.push(doc);
+          else docs[index] = doc;
+        }
+
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      if (
+        req.method === 'POST' &&
+        parts[0] === 'api' &&
+        parts[1] === 'patch' &&
+        parts.length === 4
+      ) {
+        const body = await readBody(req);
+        const itemId = Number(String(body?.document_id || '').split('/').pop());
+        const doc = docs.find((candidate) => candidate.itemId === itemId);
+        if (!doc) {
+          sendJson(res, 404, { ok: false, error: 'document not found' });
+          return;
+        }
+
+        const operations = Object.entries(body.patch || {});
+        for (const [key, operation] of operations) {
+          if (operation?.['@op'] !== 'SwapValue') {
+            sendJson(res, 400, { ok: false, error: 'unsupported patch operation' });
+            return;
+          }
+
+          const before = Object.prototype.hasOwnProperty.call(operation, '@before') ? operation['@before'] : null;
+          if (!valuesEqual(storedValue(doc, key), before)) {
+            sendJson(res, 409, { ok: false, error: `patch before mismatch for ${key}` });
+            return;
+          }
+        }
+
+        for (const [key, operation] of operations) {
+          if (operation['@after'] === undefined || operation['@after'] === null) {
+            delete doc[key];
+          } else {
+            doc[key] = operation['@after'];
+          }
+        }
+
+        if (!Array.isArray(doc.tags)) doc.tags = [];
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      if (
+        req.method === 'DELETE' &&
+        parts[0] === 'api' &&
+        parts[1] === 'document' &&
+        parts.length === 4
+      ) {
+        const documentId = url.searchParams.get('id');
+        const itemId = Number(String(documentId || '').split('/').pop());
+        const before = docs.length;
+        docs = docs.filter((candidate) => candidate.itemId !== itemId);
+
+        sendJson(res, before === docs.length ? 404 : 200, before === docs.length
+          ? { ok: false, error: 'document not found' }
+          : { ok: true });
         return;
       }
 
