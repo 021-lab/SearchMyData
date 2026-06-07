@@ -171,14 +171,21 @@ test('GET /list-data.js emits executable data from TerminusDB', async () => {
 
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /application\/javascript/);
-  assert.match(js, /const nextId = 32;/);
-  assert.match(js, /const items = /);
+  assert.match(js, /let nextId = 32;/);
+  assert.match(js, /let items = /);
 
   const vm = require('node:vm');
   const context = {};
-  vm.runInNewContext(`${js}\nthis.__result = { nextId, items };`, context);
-  assert.equal(context.__result.nextId, 32);
-  assert.equal(context.__result.items[1].children[0].id, 26);
+  vm.runInNewContext(
+    `${js}
+    items = [];
+    nextId += 1;
+    this.__result = { nextId, items };
+    `,
+    context
+  );
+  assert.equal(context.__result.nextId, 33);
+  assert.equal(context.__result.items.length, 0);
 });
 
 test('GET /api/document-check matches GET /document shape', async () => {

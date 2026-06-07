@@ -226,7 +226,7 @@ function computeNextId(docs) {
 }
 
 function buildListDataJs(items, nextId) {
-  return `/* auto-generated - do not edit */\nconst nextId = ${nextId};\nconst items = ${JSON.stringify(items, null, 2)};\n`;
+  return `/* auto-generated - do not edit */\nlet nextId = ${nextId};\nlet items = ${JSON.stringify(items, null, 2)};\n`;
 }
 
 const undoSessions = new Map();

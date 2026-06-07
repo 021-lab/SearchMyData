@@ -109,6 +109,69 @@ function buildTree(flatList) {
   return root;
 }
 
+function cloneItems() {
+  return JSON.parse(JSON.stringify(items));
+}
+
+function flattenForAction(tree) {
+  const result = [];
+
+  function walk(nodes, parentId) {
+    nodes.forEach((item, position) => {
+      result.push({ id: item.id, parentId, position });
+      if (item.children?.length) walk(item.children, item.id);
+    });
+  }
+
+  walk(tree, null);
+  return result;
+}
+
+let pendingActions = Promise.resolve();
+
+function sendAction(type, data) {
+  pendingActions = pendingActions
+    .catch(() => {})
+    .then(() => fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, data: data || {} })
+    }))
+    .then(() => undefined)
+    .catch(() => undefined);
+
+  return pendingActions;
+}
+
+function normalizeTree(tree) {
+  return tree.map(item => ({
+    id: item.id,
+    line1: item.line1,
+    ...(item.line2 ? { line2: item.line2 } : {}),
+    ...(item.tags?.length ? { tags: [...item.tags].sort() } : {}),
+    ...(item.collapsed ? { collapsed: true } : {}),
+    children: normalizeTree(item.children || [])
+  }));
+}
+
+async function checkDocumentAgainstServer() {
+  await pendingActions;
+  const res = await fetch('/api/document-check');
+  const server = await res.json();
+  return {
+    ok: JSON.stringify(normalizeTree(items)) === JSON.stringify(normalizeTree(server.items || [])),
+    browser: normalizeTree(items),
+    server: normalizeTree(server.items || [])
+  };
+}
+
+window.__searchMyDataTest = {
+  getItems: () => cloneItems(),
+  getNextId: () => nextId,
+  waitForSync: () => pendingActions,
+  checkDocumentAgainstServer
+};
+
 // ─── Render ──────────────────────────────────────────────────────────────────
 const container = document.getElementById('list-container');
 
@@ -182,6 +245,7 @@ undoBtn.addEventListener('click', () => {
   render();
   undoBtn.disabled = true;
   showToast('Отменено');
+  sendAction('Undo', {});
 });
 
 function saveUndoSnapshot() {
@@ -192,8 +256,10 @@ function saveUndoSnapshot() {
 function toggleCollapse(itemId) {
   const item = findItem(itemId);
   if (!item || !item.children?.length) return;
+  saveUndoSnapshot();
   item.collapsed = !item.collapsed;
   render();
+  sendAction('toggle_collapse', { id: itemId });
 }
 
 // ─── Drag (long press) ───────────────────────────────────────────────────────
@@ -480,6 +546,7 @@ function finalizeDrag() {
     const flatList = wrappers.map(w => ({ id: +w.dataset.id, level: +w.dataset.level || 0 }));
     items = buildTree(flatList);
     render();
+    sendAction('reorder', { flat: flattenForAction(items) });
   }, 220);
 }
 
@@ -557,11 +624,13 @@ function execTag(tag, itemId) {
   if (!tag) return;
   const item = findItem(itemId);
   if (!item) return;
+  saveUndoSnapshot();
   if (!item.tags) item.tags = [];
   const idx = item.tags.indexOf(tag);
   if (idx >= 0) { item.tags.splice(idx, 1); showToast(`«${tag}» убран`); }
   else          { item.tags.push(tag);       showToast(`«${tag}» добавлен`); }
   render();
+  sendAction('toggle_tag', { id: itemId, tag });
 }
 
 // ─── Swipe gesture ───────────────────────────────────────────────────────────
@@ -709,6 +778,7 @@ function bindGesture(el, actionBg, itemId, wrapper) {
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
 function doDelete(itemId, wrapper) {
+  saveUndoSnapshot();
   wrapper.style.transition = 'max-height 0.3s ease, opacity 0.3s ease, margin 0.3s ease';
   wrapper.style.maxHeight = wrapper.offsetHeight + 'px';
   wrapper.style.overflow = 'hidden';
@@ -721,6 +791,7 @@ function doDelete(itemId, wrapper) {
     removeFromTree(itemId);
     render();
     showToast('Элемент удалён');
+    sendAction('delete_item', { id: itemId });
   }, 310);
 }
 
@@ -815,25 +886,33 @@ function confirmModal() {
   const l2 = input2.value.trim();
 
   if (modalMode === 'edit') {
+    saveUndoSnapshot();
     const item = findItem(modalTargetId);
     if (item) { item.line1 = l1; item.line2 = l2 || undefined; }
     render();
     closeModal();
     showToast('Сохранено');
+    sendAction('edit_item', { id: modalTargetId, line1: l1, line2: l2 || undefined });
   } else if (modalMode === 'nest') {
+    saveUndoSnapshot();
     const parent = findItem(modalTargetId);
+    const newId = nextId++;
     if (parent) {
       if (!parent.children) parent.children = [];
-      parent.children.push({ id: nextId++, line1: l1, line2: l2 || undefined });
+      parent.children.push({ id: newId, line1: l1, line2: l2 || undefined });
     }
     render();
     closeModal();
     showToast('Добавлен вложенный');
+    sendAction('add_item', { id: newId, line1: l1, line2: l2 || undefined, parentId: modalTargetId });
   } else {
-    items.push({ id: nextId++, line1: l1, line2: l2 || undefined });
+    saveUndoSnapshot();
+    const newId = nextId++;
+    items.push({ id: newId, line1: l1, line2: l2 || undefined });
     render();
     closeModal();
     showToast('Элемент добавлен');
+    sendAction('add_item', { id: newId, line1: l1, line2: l2 || undefined, parentId: null });
   }
 }
 
