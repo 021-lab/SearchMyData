@@ -271,6 +271,226 @@ function defaultReservedDocBody(docId) {
   }
 }
 
+function isInvalidResourcePathResponse(body) {
+  return body?.['api:error']?.['@type'] === 'api:InvalidResourcePath';
+}
+
+function isSchemaCheckFailureResponse(body) {
+  return body?.['api:error']?.['@type'] === 'api:SchemaCheckFailure';
+}
+
+function mapListTreeNode(node) {
+  return {
+    id: node.line1,
+    ...(node.line2 ? { value: node.line2 } : {}),
+    ...(Array.isArray(node.tags) && node.tags.length ? { tags: node.tags } : {}),
+    children: Array.isArray(node.children) ? node.children.map(mapListTreeNode) : [],
+  };
+}
+
+function findTreeItemByLine1(items, line1) {
+  for (const item of items) {
+    if (item.line1 === line1) return item;
+    const nested = findTreeItemByLine1(item.children || [], line1);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+function findDocById(docs, id) {
+  return docs.find((doc) => itemIdFromDoc(doc) === id);
+}
+
+function makeListItemDoc(id, line1, parentId, position, extra = {}) {
+  return {
+    '@type': 'ListItem',
+    '@id': `ListItem/${id}`,
+    itemId: id,
+    line1,
+    tags: Array.isArray(extra.tags) ? extra.tags : [],
+    parentId,
+    position,
+    ...(extra.line2 ? { line2: extra.line2 } : {}),
+    ...(extra.collapsed ? { collapsed: true } : {}),
+  };
+}
+
+async function ensureReservedListRoots(docs) {
+  let nextDocs = [...docs];
+  let nextId = computeNextId(nextDocs);
+  const additions = [];
+
+  const roots = flatToTree(nextDocs);
+  let contextRoot = findTreeItemByLine1(roots, RESERVED_CONTEXT_ID);
+  let settingsRoot = findTreeItemByLine1(roots, RESERVED_SETTINGS_ID);
+  let answersRoot = findTreeItemByLine1(roots, RESERVED_ANSWERS_ID);
+
+  function addRoot(line1, line2) {
+    const rootCount = nextDocs.filter((doc) => (doc.parentId ?? null) === null).length;
+    const doc = makeListItemDoc(nextId, line1, null, rootCount, line2 ? { line2 } : {});
+    additions.push(doc);
+    nextDocs.push(doc);
+    nextId += 1;
+    return doc;
+  }
+
+  if (!contextRoot) {
+    const doc = addRoot(RESERVED_CONTEXT_ID, 'Context root for chat');
+    contextRoot = { id: doc.itemId, line1: doc.line1, line2: doc.line2, children: [] };
+  }
+
+  if (!settingsRoot) {
+    const doc = addRoot(RESERVED_SETTINGS_ID, 'Global chat settings');
+    settingsRoot = { id: doc.itemId, line1: doc.line1, line2: doc.line2, children: [] };
+  }
+
+  if (!answersRoot) {
+    const doc = addRoot(RESERVED_ANSWERS_ID, 'Chat history');
+    answersRoot = { id: doc.itemId, line1: doc.line1, line2: doc.line2, children: [] };
+  }
+
+  const settingsRootDoc = findDocById(nextDocs, settingsRoot.id);
+  const modelChild = nextDocs.find((doc) => doc.parentId === settingsRoot.id && doc.line1 === 'model');
+  const tokenChild = nextDocs.find((doc) => doc.parentId === settingsRoot.id && doc.line1 === 'api_token');
+
+  if (!modelChild) {
+    const doc = makeListItemDoc(nextId, 'model', settingsRoot.id, nextDocs.filter((doc) => doc.parentId === settingsRoot.id).length, { line2: 'gpt-4.1-mini' });
+    additions.push(doc);
+    nextDocs.push(doc);
+    nextId += 1;
+  }
+
+  if (!tokenChild) {
+    const doc = makeListItemDoc(nextId, 'api_token', settingsRoot.id, nextDocs.filter((doc) => doc.parentId === settingsRoot.id).length, { line2: '' });
+    additions.push(doc);
+    nextDocs.push(doc);
+    nextId += 1;
+  }
+
+  if (additions.length > 0) {
+    await writeDocs(additions);
+    return listItemsFromDb();
+  }
+
+  if (!settingsRootDoc) {
+    return listItemsFromDb();
+  }
+
+  return nextDocs;
+}
+
+function reservedDocFromListItems(docId, docs) {
+  const tree = flatToTree(docs);
+  const root = findTreeItemByLine1(tree, docId);
+  if (!root) throw new Error(`${docId} not found`);
+
+  if (docId === RESERVED_CONTEXT_ID) {
+    return {
+      '@type': 'ListItemReservedDoc',
+      '@id': `ListItem/${root.id}`,
+      docId,
+      body: mapListTreeNode(root),
+    };
+  }
+
+  if (docId === RESERVED_SETTINGS_ID) {
+    const settings = {};
+    for (const child of root.children || []) {
+      settings[child.line1] = child.line2 || '';
+    }
+    return {
+      '@type': 'ListItemReservedDoc',
+      '@id': `ListItem/${root.id}`,
+      docId,
+      body: {
+        model: settings.model || 'gpt-4.1-mini',
+        api_token: settings.api_token || '',
+      },
+    };
+  }
+
+  if (docId === RESERVED_ANSWERS_ID) {
+    return {
+      '@type': 'ListItemReservedDoc',
+      '@id': `ListItem/${root.id}`,
+      docId,
+      body: {
+        entries: (root.children || []).map((child) => ({
+          created_at: Array.isArray(child.tags) && child.tags[0] ? child.tags[0] : '',
+          user_request: child.line1,
+          model_response: child.line2 || '',
+        })),
+      },
+    };
+  }
+
+  throw new Error(`unknown reserved document: ${docId}`);
+}
+
+async function getReservedDocViaListItems(docId) {
+  const docs = await ensureReservedListRoots(await listItemsFromDb());
+  return reservedDocFromListItems(docId, docs);
+}
+
+async function writeReservedDocViaListItems(docId, body) {
+  const docs = await ensureReservedListRoots(await listItemsFromDb());
+  const nextDocs = [...docs];
+  const tree = flatToTree(nextDocs);
+  const root = findTreeItemByLine1(tree, docId);
+
+  if (!root) throw new Error(`${docId} not found`);
+
+  if (docId === RESERVED_SETTINGS_ID) {
+    const byId = new Map(nextDocs.map((doc) => [itemIdFromDoc(doc), doc]));
+    const updates = [];
+    for (const child of root.children || []) {
+      const doc = byId.get(child.id);
+      if (!doc) continue;
+      if (child.line1 === 'model') doc.line2 = body.model || 'gpt-4.1-mini';
+      if (child.line1 === 'api_token') doc.line2 = body.api_token || '';
+      updates.push(doc);
+    }
+    if (updates.length > 0) await writeDocs(updates);
+    return getReservedDocViaListItems(docId);
+  }
+
+  if (docId === RESERVED_ANSWERS_ID) {
+    const rootId = root.id;
+    const existingEntries = (root.children || []).map((child) => ({
+      created_at: Array.isArray(child.tags) && child.tags[0] ? child.tags[0] : '',
+      user_request: child.line1,
+      model_response: child.line2 || '',
+    }));
+    const entries = Array.isArray(body.entries) ? body.entries : [];
+
+    if (entries.length < existingEntries.length) {
+      throw new Error('answers_reserved rewrite is not supported in ListItem fallback');
+    }
+
+    if (entries.length === existingEntries.length) return getReservedDocViaListItems(docId);
+
+    let nextId = computeNextId(nextDocs);
+    const additions = [];
+    for (let index = existingEntries.length; index < entries.length; index += 1) {
+      const entry = entries[index];
+      additions.push(makeListItemDoc(nextId, entry.user_request || '', rootId, index, {
+        line2: entry.model_response || '',
+        tags: entry.created_at ? [entry.created_at] : [],
+      }));
+      nextId += 1;
+    }
+
+    if (additions.length > 0) await writeDocs(additions);
+    return getReservedDocViaListItems(docId);
+  }
+
+  if (docId === RESERVED_CONTEXT_ID) {
+    return getReservedDocViaListItems(docId);
+  }
+
+  throw new Error(`unknown reserved document: ${docId}`);
+}
+
 function normalizeReservedDoc(docId, body) {
   if (docId === RESERVED_CONTEXT_ID) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -312,6 +532,10 @@ async function getReservedDoc(docId) {
   const apiPath = `/api/document/${dbPath()}/${encodeURIComponent('ChatDoc')}/${encodeURIComponent(docId)}`;
   const { status, body } = await terminusReq('GET', apiPath);
 
+  if (status === 400 && isInvalidResourcePathResponse(body)) {
+    return getReservedDocViaListItems(docId);
+  }
+
   if (status === 404) {
     const fallbackBody = defaultReservedDocBody(docId);
     await writeReservedDoc(docId, fallbackBody);
@@ -348,6 +572,16 @@ async function writeReservedDoc(docId, body) {
     withCommitMeta(`/api/document/${dbPath()}`, `write ${docId}`),
     payload
   );
+  if (status === 400) {
+    const probe = await terminusReq(
+      'POST',
+      withCommitMeta(`/api/document/${dbPath()}`, `write ${docId}`),
+      payload
+    );
+    if (isSchemaCheckFailureResponse(probe.body)) {
+      return writeReservedDocViaListItems(docId, body);
+    }
+  }
   if (status !== 200 && status !== 201) {
     throw new Error(`failed to write ${docId}`);
   }
