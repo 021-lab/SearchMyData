@@ -5,6 +5,7 @@ const { startFakeTerminusDb } = require('./fake-terminusdb');
 
 let fakeDb;
 let app;
+const TEST_PORT = 3100;
 
 function listen(server, port) {
   return new Promise((resolve, reject) => {
@@ -121,11 +122,11 @@ test.beforeEach(async () => {
   process.env.TERMINUS_DB = 'searchmydata';
   process.env.TERMINUS_USER = 'admin';
   process.env.TERMINUS_PASS = 'root';
-  process.env.PORT = '3000';
+  process.env.PORT = String(TEST_PORT);
 
   const { createServer } = require('../server');
   app = createServer();
-  await listen(app, 3000);
+  await listen(app, TEST_PORT);
 });
 
 test.afterEach(async () => {

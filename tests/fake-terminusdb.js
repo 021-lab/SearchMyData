@@ -103,6 +103,56 @@ function createSeedDocs() {
   return SEED_DOCS.map(toTerminusDoc);
 }
 
+function createReservedDocs() {
+  return {
+    context_all_reserved: {
+      '@type': 'ChatDoc',
+      '@id': 'ChatDoc/context_all_reserved',
+      docId: 'context_all_reserved',
+      body: {
+        id: 'context_all_reserved',
+        title: 'Context Root',
+        children: [
+          { id: 'context_child_a', title: 'Alpha', value: 'alpha', children: [] },
+          {
+            id: 'context_child_b',
+            title: 'Beta',
+            value: 'beta',
+            children: [
+              { id: 'context_grandchild_b1', title: 'Nested', value: 'nested-value', children: [] },
+            ],
+          },
+        ],
+      },
+    },
+    settings_reserved: {
+      '@type': 'ChatDoc',
+      '@id': 'ChatDoc/settings_reserved',
+      docId: 'settings_reserved',
+      body: {
+        provider: 'openai',
+        model: 'gpt-4.1-mini',
+        api_token: 'test-token',
+      },
+    },
+    answers_reserved: {
+      '@type': 'ChatDoc',
+      '@id': 'ChatDoc/answers_reserved',
+      docId: 'answers_reserved',
+      body: {
+        entries: [],
+      },
+    },
+  };
+}
+
+function validateChatDoc(doc) {
+  if (doc?.['@type'] !== 'ChatDoc') return 'document @type must be ChatDoc';
+  if (!isNonEmptyString(doc.docId)) return 'document docId must be a non-empty string';
+  if (!Object.prototype.hasOwnProperty.call(doc, 'body')) return 'document body is required';
+  return undefined;
+}
+
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
@@ -137,10 +187,12 @@ function readBody(req) {
 
 function createFakeTerminusDb() {
   let docs = createSeedDocs();
+  let reservedDocs = createReservedDocs();
 
   function resetSeedDocs() {
     docs = createSeedDocs();
-    return clone(docs);
+    reservedDocs = createReservedDocs();
+    return { docs: clone(docs), reservedDocs: clone(reservedDocs) };
   }
 
   const server = http.createServer(async (req, res) => {
@@ -156,6 +208,11 @@ function createFakeTerminusDb() {
 
       if (req.method === 'GET' && url.pathname === '/__test/docs') {
         sendJson(res, 200, clone(docs));
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/__test/reserved-docs') {
+        sendJson(res, 200, clone(reservedDocs));
         return;
       }
 
@@ -183,17 +240,31 @@ function createFakeTerminusDb() {
           return;
         }
 
-        const validationError = body.map(validateTerminusDoc).find(Boolean);
+        const validationError = body.map((doc) => {
+          if (doc?.['@type'] === 'ListItem') return validateTerminusDoc(doc);
+          if (doc?.['@type'] === 'ChatDoc') return validateChatDoc(doc);
+          return 'unsupported document type';
+        }).find(Boolean);
         if (validationError) {
           sendJson(res, 400, { ok: false, error: validationError });
           return;
         }
 
-        const nextDocs = body.map(normalizeTerminusDoc);
-        for (const doc of nextDocs) {
-          const index = docs.findIndex((candidate) => candidate.itemId === doc.itemId);
-          if (index === -1) docs.push(doc);
-          else docs[index] = doc;
+        for (const incoming of body) {
+          if (incoming['@type'] === 'ListItem') {
+            const doc = normalizeTerminusDoc(incoming);
+            const index = docs.findIndex((candidate) => candidate.itemId === doc.itemId);
+            if (index === -1) docs.push(doc);
+            else docs[index] = doc;
+            continue;
+          }
+
+          reservedDocs[incoming.docId] = {
+            '@type': 'ChatDoc',
+            '@id': incoming['@id'] || `ChatDoc/${incoming.docId}`,
+            docId: incoming.docId,
+            body: clone(incoming.body),
+          };
         }
 
         sendJson(res, 200, { ok: true });
@@ -271,6 +342,18 @@ function createFakeTerminusDb() {
         return;
       }
 
+      if (
+        req.method === 'GET' &&
+        parts[0] === 'api' &&
+        parts[1] === 'document' &&
+        parts.length === 6 &&
+        parts[4] === 'ChatDoc'
+      ) {
+        const doc = reservedDocs[parts[5]];
+        sendJson(res, doc ? 200 : 404, doc ? clone(doc) : { ok: false, error: 'document not found' });
+        return;
+      }
+
       sendJson(res, 404, { ok: false, error: 'not found' });
     } catch (err) {
       sendJson(res, 500, { ok: false, error: err.message });
@@ -281,6 +364,7 @@ function createFakeTerminusDb() {
     server,
     resetSeedDocs,
     getDocs: () => clone(docs),
+    getReservedDocs: () => clone(reservedDocs),
   };
 }
 
@@ -312,6 +396,7 @@ async function startFakeTerminusDb() {
     url,
     resetSeedDocs: fake.resetSeedDocs,
     getDocs: fake.getDocs,
+    getReservedDocs: fake.getReservedDocs,
     stop: () => stop(fake.server),
   };
 }

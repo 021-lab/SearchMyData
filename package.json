@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "test:server": "node --test tests/server.test.js",
-    "test:e2e": "playwright test tests/e2e-roundtrip.spec.js",
+    "test:e2e": "playwright test tests/e2e-roundtrip.spec.js tests/e2e-chat-with-secrets.spec.js",
     "test": "npm run test:server && npm run test:e2e"
   },
   "devDependencies": {

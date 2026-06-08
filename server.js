@@ -9,8 +9,13 @@ const path = require('node:path');
 const ROOT = __dirname;
 const DEFAULT_DOCUMENT_ID = 'list-data.js';
 const SESSION_COOKIE = 'smd_session';
+const CHAT_WITH_SECRETS_PATH = '/chat-with-secrets';
+const RESERVED_CONTEXT_ID = 'context_all_reserved';
+const RESERVED_SETTINGS_ID = 'settings_reserved';
+const RESERVED_ANSWERS_ID = 'answers_reserved';
 const STATIC_ALLOWLIST = new Set([
   '/',
+  CHAT_WITH_SECRETS_PATH,
   '/list-manager.html',
   '/list-manager.css',
   '/list-manager-docs.html',
@@ -242,6 +247,197 @@ function flatToTree(docs) {
 
   sortAndClean(roots);
   return roots;
+}
+
+function defaultReservedDocBody(docId) {
+  switch (docId) {
+    case RESERVED_CONTEXT_ID:
+      return {
+        id: RESERVED_CONTEXT_ID,
+        title: 'Context Root',
+        children: [],
+      };
+    case RESERVED_SETTINGS_ID:
+      return {
+        model: 'gpt-4.1-mini',
+        api_token: '',
+      };
+    case RESERVED_ANSWERS_ID:
+      return {
+        entries: [],
+      };
+    default:
+      throw new Error(`unknown reserved document: ${docId}`);
+  }
+}
+
+function normalizeReservedDoc(docId, body) {
+  if (docId === RESERVED_CONTEXT_ID) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new Error(`${docId} must be an object`);
+    }
+
+    return {
+      id: RESERVED_CONTEXT_ID,
+      title: typeof body.title === 'string' ? body.title : 'Context Root',
+      children: Array.isArray(body.children) ? body.children : [],
+    };
+  }
+
+  if (docId === RESERVED_SETTINGS_ID) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new Error(`${docId} must be an object`);
+    }
+
+    return {
+      model: typeof body.model === 'string' ? body.model : 'gpt-4.1-mini',
+      api_token: typeof body.api_token === 'string' ? body.api_token : '',
+    };
+  }
+
+  if (docId === RESERVED_ANSWERS_ID) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new Error(`${docId} must be an object`);
+    }
+
+    return {
+      entries: Array.isArray(body.entries) ? body.entries : [],
+    };
+  }
+
+  throw new Error(`unknown reserved document: ${docId}`);
+}
+
+async function getReservedDoc(docId) {
+  const apiPath = `/api/document/${dbPath()}/${encodeURIComponent('ChatDoc')}/${encodeURIComponent(docId)}`;
+  const { status, body } = await terminusReq('GET', apiPath);
+
+  if (status === 404) {
+    const fallbackBody = defaultReservedDocBody(docId);
+    await writeReservedDoc(docId, fallbackBody);
+    return {
+      '@type': 'ChatDoc',
+      '@id': `ChatDoc/${docId}`,
+      docId,
+      body: fallbackBody,
+    };
+  }
+
+  if (status !== 200 || !body) {
+    throw new Error(`${docId} not found`);
+  }
+
+  return {
+    '@type': 'ChatDoc',
+    '@id': body['@id'] || `ChatDoc/${docId}`,
+    docId,
+    body: normalizeReservedDoc(docId, body.body),
+  };
+}
+
+async function writeReservedDoc(docId, body) {
+  const payload = [{
+    '@type': 'ChatDoc',
+    '@id': `ChatDoc/${docId}`,
+    docId,
+    body: normalizeReservedDoc(docId, body),
+  }];
+
+  const { status } = await terminusReq(
+    'POST',
+    withCommitMeta(`/api/document/${dbPath()}`, `write ${docId}`),
+    payload
+  );
+  if (status !== 200 && status !== 201) {
+    throw new Error(`failed to write ${docId}`);
+  }
+
+  return payload[0];
+}
+
+function chatDummyModeEnabled() {
+  return process.env.CHAT_WITH_SECRETS_DUMMY !== '0';
+}
+
+function buildDummyResponse(message, contextBody, settingsBody) {
+  const contextChildren = Array.isArray(contextBody.children) ? contextBody.children.length : 0;
+  return `Dummy response for "${message}" using model "${settingsBody.model}" with ${contextChildren} top-level context nodes.`;
+}
+
+async function callOpenAiCompatibleModel(message, contextBody, settingsBody) {
+  if (chatDummyModeEnabled()) {
+    return buildDummyResponse(message, contextBody, settingsBody);
+  }
+
+  if (!settingsBody.api_token) {
+    throw new Error('settings_reserved.api_token is required');
+  }
+
+  const payload = {
+    model: settingsBody.model || 'gpt-4.1-mini',
+    messages: [
+      {
+        role: 'user',
+        content: JSON.stringify({
+          context_all_reserved: contextBody,
+          user_request: message,
+        }),
+      },
+    ],
+  };
+
+  const endpoint = process.env.CHAT_WITH_SECRETS_OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
+  const url = new URL(endpoint);
+  const client = url.protocol === 'https:' ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const raw = JSON.stringify(payload);
+    const req = client.request(
+      {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: `${url.pathname}${url.search}`,
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${settingsBody.api_token}`,
+          'Content-Length': Buffer.byteLength(raw),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          let body;
+          try {
+            body = JSON.parse(data);
+          } catch {
+            reject(new Error('model response was not valid JSON'));
+            return;
+          }
+
+          const text = body?.choices?.[0]?.message?.content;
+          if (res.statusCode !== 200 || !isNonEmptyString(text)) {
+            reject(new Error(`model call failed with status ${res.statusCode}`));
+            return;
+          }
+
+          resolve(text);
+        });
+      }
+    );
+
+    req.on('error', reject);
+    req.setTimeout(terminusTimeoutMs(), () => {
+      req.destroy(new Error(`Model request timed out after ${terminusTimeoutMs()}ms`));
+    });
+    req.write(raw);
+    req.end();
+  });
 }
 
 function computeNextId(docs) {
@@ -641,6 +837,42 @@ async function handleAction(req, res) {
   }
 }
 
+async function serveChatContext(res) {
+  const doc = await getReservedDoc(RESERVED_CONTEXT_ID);
+  sendJson(res, 200, doc.body, { 'Cache-Control': 'no-store' });
+}
+
+async function serveChatHistory(res) {
+  const doc = await getReservedDoc(RESERVED_ANSWERS_ID);
+  sendJson(res, 200, doc.body, { 'Cache-Control': 'no-store' });
+}
+
+async function handleChatSend(req, res) {
+  try {
+    const body = await readJsonBody(req);
+    requireNonEmptyString(body?.message, 'message');
+
+    const contextDoc = await getReservedDoc(RESERVED_CONTEXT_ID);
+    const settingsDoc = await getReservedDoc(RESERVED_SETTINGS_ID);
+    const answersDoc = await getReservedDoc(RESERVED_ANSWERS_ID);
+    const responseText = await callOpenAiCompatibleModel(body.message, contextDoc.body, settingsDoc.body);
+    const saved = {
+      created_at: new Date().toISOString(),
+      user_request: body.message,
+      model_response: responseText,
+    };
+    const entries = Array.isArray(answersDoc.body.entries) ? answersDoc.body.entries : [];
+
+    await writeReservedDoc(RESERVED_ANSWERS_ID, {
+      entries: [...entries, saved],
+    });
+
+    sendJson(res, 200, { ok: true, response: responseText, saved }, { 'Cache-Control': 'no-store' });
+  } catch (err) {
+    sendJson(res, 200, { ok: false, error: err.message }, { 'Cache-Control': 'no-store' });
+  }
+}
+
 function documentIdFromReq(req) {
   const url = new URL(req.url, 'http://127.0.0.1');
   return url.searchParams.get('id') || DEFAULT_DOCUMENT_ID;
@@ -744,7 +976,9 @@ function staticPathFor(urlPath) {
   }
 
   if (!STATIC_ALLOWLIST.has(decoded)) return undefined;
-  const pathname = decoded === '/' ? '/list-manager.html' : decoded;
+  let pathname = decoded;
+  if (decoded === '/') pathname = '/list-manager.html';
+  if (decoded === CHAT_WITH_SECRETS_PATH) pathname = '/chat-with-secrets.html';
   return path.join(ROOT, pathname);
 }
 
@@ -791,6 +1025,21 @@ async function route(req, res) {
 
   if (req.method === 'GET' && url.pathname === '/list-data.js') {
     await serveListData(req, res);
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/chat/context') {
+    await serveChatContext(res);
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/chat/history') {
+    await serveChatHistory(res);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/chat/send') {
+    await handleChatSend(req, res);
     return;
   }
 

@@ -11,3 +11,7 @@ gmail - reply to mail
 google contacts
 gdrive 
 icloud files
+
+routes:
+- `/` - list manager backed by TerminusDB
+- `/chat-with-secrets` - reserved-context chat UI with server-stored history

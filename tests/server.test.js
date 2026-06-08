@@ -40,6 +40,12 @@ async function jsonFrom(path) {
   return res.json();
 }
 
+async function requestJson(path, options) {
+  const res = await fetch(`${appUrl}${path}`, options);
+  const body = await res.json();
+  return { res, body };
+}
+
 async function postAction(type, data = {}) {
   const res = await fetch(`${appUrl}/api/action`, {
     method: 'POST',
@@ -193,6 +199,55 @@ test('GET /api/document-check matches GET /document shape', async () => {
   const check = await jsonFrom('/api/document-check');
 
   assert.deepEqual(check, doc);
+});
+
+test('GET /api/chat/context returns nested reserved context JSON', async () => {
+  const { res, body } = await requestJson('/api/chat/context');
+
+  assert.equal(res.status, 200);
+  assert.equal(body.id, 'context_all_reserved');
+  assert.equal(body.children[0].id, 'context_child_a');
+  assert.equal(body.children[1].children[0].id, 'context_grandchild_b1');
+});
+
+test('GET /api/chat/history returns reserved answers history entries', async () => {
+  const { res, body } = await requestJson('/api/chat/history');
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(body, { entries: [] });
+});
+
+test('POST /api/chat/send stores request and dummy response in reserved history', async () => {
+  const send = await requestJson('/api/chat/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: 'Hello secrets' }),
+  });
+  const history = await requestJson('/api/chat/history');
+  const reserved = fakeDb.getReservedDocs();
+
+  assert.equal(send.res.status, 200);
+  assert.equal(send.body.ok, true);
+  assert.equal(send.body.saved.user_request, 'Hello secrets');
+  assert.match(send.body.response, /dummy/i);
+  assert.equal(history.body.entries.length, 1);
+  assert.equal(history.body.entries[0].user_request, 'Hello secrets');
+  assert.equal(history.body.entries[0].model_response, send.body.response);
+  assert.equal(reserved.answers_reserved.body.entries.length, 1);
+});
+
+test('POST /api/chat/send rejects empty message without mutating reserved history', async () => {
+  const before = fakeDb.getReservedDocs();
+  const send = await requestJson('/api/chat/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: '   ' }),
+  });
+  const after = fakeDb.getReservedDocs();
+
+  assert.equal(send.res.status, 200);
+  assert.deepEqual(send.body, { ok: false, error: 'message must be a non-empty string' });
+  assert.deepEqual(after, before);
 });
 
 test('GET /document returns document not found for unknown document id', async () => {
