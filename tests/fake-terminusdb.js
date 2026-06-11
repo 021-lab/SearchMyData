@@ -162,6 +162,29 @@ function sendJson(res, status, body) {
   res.end(payload);
 }
 
+function invalidResourcePath(path) {
+  return {
+    '@type': 'api:GetDocumentErrorResponse',
+    'api:error': {
+      '@type': 'api:InvalidResourcePath',
+      'api:resource_path': path,
+    },
+    'api:message': `Resource path invalid: '${path}'`,
+    'api:status': 'api:failure',
+  };
+}
+
+function schemaCheckFailure() {
+  return {
+    '@type': 'api:InsertDocumentErrorResponse',
+    'api:error': {
+      '@type': 'api:SchemaCheckFailure',
+    },
+    'api:message': 'Schema check failure',
+    'api:status': 'api:failure',
+  };
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -237,6 +260,11 @@ function createFakeTerminusDb() {
         const body = await readBody(req);
         if (!Array.isArray(body)) {
           sendJson(res, 400, { ok: false, error: 'expected document array' });
+          return;
+        }
+
+        if (process.env.FAKE_TERMINUS_CHATDOC_UNSUPPORTED === '1' && body.some((doc) => doc?.['@type'] === 'ChatDoc')) {
+          sendJson(res, 400, schemaCheckFailure());
           return;
         }
 
@@ -349,6 +377,10 @@ function createFakeTerminusDb() {
         parts.length === 6 &&
         parts[4] === 'ChatDoc'
       ) {
+        if (process.env.FAKE_TERMINUS_CHATDOC_UNSUPPORTED === '1') {
+          sendJson(res, 400, invalidResourcePath(url.pathname));
+          return;
+        }
         const doc = reservedDocs[parts[5]];
         sendJson(res, doc ? 200 : 404, doc ? clone(doc) : { ok: false, error: 'document not found' });
         return;

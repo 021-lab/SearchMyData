@@ -40,6 +40,7 @@ test.beforeEach(async () => {
   process.env.TERMINUS_USER = 'admin';
   process.env.TERMINUS_PASS = 'root';
   process.env.PORT = String(TEST_PORT);
+  process.env.CHAT_WITH_SECRETS_DUMMY = '1';
 
   const { createServer } = require('../server');
   app = createServer();
@@ -61,6 +62,7 @@ test.afterEach(async () => {
   delete process.env.TERMINUS_USER;
   delete process.env.TERMINUS_PASS;
   delete process.env.PORT;
+  delete process.env.CHAT_WITH_SECRETS_DUMMY;
 });
 
 test('chat-with-secrets shows dummy response in history after reload', async ({ page }) => {

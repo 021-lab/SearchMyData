@@ -315,6 +315,10 @@ function makeListItemDoc(id, line1, parentId, position, extra = {}) {
   };
 }
 
+function isTokenLine1(line1) {
+  return line1 === 'api_token' || line1 === 'api-token' || line1 === 'token';
+}
+
 async function ensureReservedListRoots(docs) {
   let nextDocs = [...docs];
   let nextId = computeNextId(nextDocs);
@@ -351,7 +355,7 @@ async function ensureReservedListRoots(docs) {
 
   const settingsRootDoc = findDocById(nextDocs, settingsRoot.id);
   const modelChild = nextDocs.find((doc) => doc.parentId === settingsRoot.id && doc.line1 === 'model');
-  const tokenChild = nextDocs.find((doc) => doc.parentId === settingsRoot.id && doc.line1 === 'api_token');
+  const tokenChild = nextDocs.find((doc) => doc.parentId === settingsRoot.id && isTokenLine1(doc.line1));
 
   if (!modelChild) {
     const doc = makeListItemDoc(nextId, 'model', settingsRoot.id, nextDocs.filter((doc) => doc.parentId === settingsRoot.id).length, { line2: 'gpt-4.1-mini' });
@@ -396,7 +400,8 @@ function reservedDocFromListItems(docId, docs) {
   if (docId === RESERVED_SETTINGS_ID) {
     const settings = {};
     for (const child of root.children || []) {
-      settings[child.line1] = child.line2 || '';
+      if (isTokenLine1(child.line1)) settings.api_token = child.line2 || '';
+      else settings[child.line1] = child.line2 || '';
     }
     return {
       '@type': 'ListItemReservedDoc',
@@ -447,7 +452,7 @@ async function writeReservedDocViaListItems(docId, body) {
       const doc = byId.get(child.id);
       if (!doc) continue;
       if (child.line1 === 'model') doc.line2 = body.model || 'gpt-4.1-mini';
-      if (child.line1 === 'api_token') doc.line2 = body.api_token || '';
+      if (isTokenLine1(child.line1)) doc.line2 = body.api_token || '';
       updates.push(doc);
     }
     if (updates.length > 0) await writeDocs(updates);
@@ -589,8 +594,10 @@ async function writeReservedDoc(docId, body) {
   return payload[0];
 }
 
-function chatDummyModeEnabled() {
-  return process.env.CHAT_WITH_SECRETS_DUMMY !== '0';
+function chatDummyModeEnabled(settingsBody) {
+  if (process.env.CHAT_WITH_SECRETS_DUMMY === '1') return true;
+  if (process.env.CHAT_WITH_SECRETS_DUMMY === '0') return false;
+  return !isNonEmptyString(settingsBody?.api_token);
 }
 
 function buildDummyResponse(message, contextBody, settingsBody) {
@@ -599,7 +606,7 @@ function buildDummyResponse(message, contextBody, settingsBody) {
 }
 
 async function callOpenAiCompatibleModel(message, contextBody, settingsBody) {
-  if (chatDummyModeEnabled()) {
+  if (chatDummyModeEnabled(settingsBody)) {
     return buildDummyResponse(message, contextBody, settingsBody);
   }
 

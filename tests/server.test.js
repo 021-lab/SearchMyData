@@ -8,6 +8,8 @@ const { startFakeTerminusDb } = require('./fake-terminusdb');
 let fakeDb;
 let app;
 let appUrl;
+let modelServer;
+let modelUrl;
 
 function listen(server) {
   return new Promise((resolve, reject) => {
@@ -44,6 +46,15 @@ async function requestJson(path, options) {
   const res = await fetch(`${appUrl}${path}`, options);
   const body = await res.json();
   return { res, body };
+}
+
+async function postDocs(docs) {
+  const res = await fetch(`${fakeDb.url}/api/document/admin/searchmydata`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(docs),
+  });
+  assert.equal(res.status, 200);
 }
 
 async function postAction(type, data = {}) {
@@ -139,6 +150,9 @@ beforeEach(async () => {
   process.env.TERMINUS_DB = 'searchmydata';
   process.env.TERMINUS_USER = 'admin';
   process.env.TERMINUS_PASS = 'root';
+  delete process.env.CHAT_WITH_SECRETS_DUMMY;
+  delete process.env.CHAT_WITH_SECRETS_OPENAI_URL;
+  delete process.env.FAKE_TERMINUS_CHATDOC_UNSUPPORTED;
 
   const { createServer } = require('../server');
   app = createServer();
@@ -160,6 +174,13 @@ afterEach(async () => {
   delete process.env.TERMINUS_DB;
   delete process.env.TERMINUS_USER;
   delete process.env.TERMINUS_PASS;
+  delete process.env.CHAT_WITH_SECRETS_DUMMY;
+  delete process.env.CHAT_WITH_SECRETS_OPENAI_URL;
+  delete process.env.FAKE_TERMINUS_CHATDOC_UNSUPPORTED;
+
+  await close(modelServer);
+  modelServer = undefined;
+  modelUrl = undefined;
 });
 
 test('GET /document returns nested tree from TerminusDB', async () => {
@@ -218,6 +239,7 @@ test('GET /api/chat/history returns reserved answers history entries', async () 
 });
 
 test('POST /api/chat/send stores request and dummy response in reserved history', async () => {
+  process.env.CHAT_WITH_SECRETS_DUMMY = '1';
   const send = await requestJson('/api/chat/send', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -248,6 +270,72 @@ test('POST /api/chat/send rejects empty message without mutating reserved histor
   assert.equal(send.res.status, 200);
   assert.deepEqual(send.body, { ok: false, error: 'message must be a non-empty string' });
   assert.deepEqual(after, before);
+});
+
+test('GET /api/chat/context keeps api-token child instead of creating empty api_token fallback', async () => {
+  process.env.FAKE_TERMINUS_CHATDOC_UNSUPPORTED = '1';
+  await close(app);
+
+  await postDocs([
+    { '@type': 'ListItem', '@id': 'ListItem/200', itemId: 200, line1: 'settings_reserved', line2: 'Global chat settings', tags: [], parentId: null, position: 99 },
+    { '@type': 'ListItem', '@id': 'ListItem/201', itemId: 201, line1: 'model', line2: 'gpt-real', tags: [], parentId: 200, position: 0 },
+    { '@type': 'ListItem', '@id': 'ListItem/202', itemId: 202, line1: 'api-token', line2: 'secret-token', tags: [], parentId: 200, position: 1 },
+  ]);
+
+  const { createServer } = require('../server');
+  app = createServer();
+  appUrl = await listen(app);
+
+  await requestJson('/api/chat/context');
+  const docs = fakeDb.getDocs();
+  const tokenDocs = docs.filter((doc) => doc.parentId === 200 && (doc.line1 === 'api-token' || doc.line1 === 'api_token'));
+
+  assert.deepEqual(tokenDocs.map((doc) => [doc.line1, doc.line2]), [['api-token', 'secret-token']]);
+});
+
+test('POST /api/chat/send uses real model call when api-token child exists in ListItem fallback', async () => {
+  process.env.FAKE_TERMINUS_CHATDOC_UNSUPPORTED = '1';
+  await close(app);
+
+  modelServer = http.createServer(async (req, res) => {
+    let raw = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => { raw += chunk; });
+    req.on('end', () => {
+      assert.equal(req.headers.authorization, 'Bearer secret-token');
+      const body = JSON.parse(raw);
+      assert.equal(body.model, 'gpt-real');
+      const payload = JSON.stringify({
+        choices: [{ message: { content: 'Real model answer' } }],
+      });
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': Buffer.byteLength(payload),
+      });
+      res.end(payload);
+    });
+  });
+  modelUrl = await listen(modelServer);
+  process.env.CHAT_WITH_SECRETS_OPENAI_URL = `${modelUrl}/v1/chat/completions`;
+
+  await postDocs([
+    { '@type': 'ListItem', '@id': 'ListItem/200', itemId: 200, line1: 'settings_reserved', line2: 'Global chat settings', tags: [], parentId: null, position: 99 },
+    { '@type': 'ListItem', '@id': 'ListItem/201', itemId: 201, line1: 'model', line2: 'gpt-real', tags: [], parentId: 200, position: 0 },
+    { '@type': 'ListItem', '@id': 'ListItem/202', itemId: 202, line1: 'api-token', line2: 'secret-token', tags: [], parentId: 200, position: 1 },
+  ]);
+
+  const { createServer } = require('../server');
+  app = createServer();
+  appUrl = await listen(app);
+
+  const send = await requestJson('/api/chat/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: 'Hello real model' }),
+  });
+
+  assert.equal(send.body.ok, true);
+  assert.equal(send.body.response, 'Real model answer');
 });
 
 test('GET /document returns document not found for unknown document id', async () => {
