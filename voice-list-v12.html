@@ -1,0 +1,1348 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#101827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Voice List" />
+  <title>Voice List v12</title>
+
+  <!--
+    voice-list-v12.html
+    Single static HTML page for iOS Safari task-list voice control.
+
+    Important deployment note:
+    - Data persistence/offline work is implemented with IndexedDB + localStorage fallback.
+    - Full PWA asset caching normally needs a separate service worker file served over HTTPS.
+      This page intentionally stays one-file-only, so it does not register an external worker.
+  -->
+
+  <script type="application/json" id="voice-list-contract-json">
+  {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "voice-list-contract/v12",
+    "title": "Voice List v12 Global Data Contract",
+    "description": "Global JSON contract used between UI, voice, parser, model fallback, patch, storage, render and undo modules.",
+    "statusEnum": ["сегодня", "фокус", "жду", "архив", "сделано", "отложено", "делегирована"],
+    "task": {
+      "type": "object",
+      "required": ["id", "title", "status", "tags"],
+      "properties": {
+        "id": {"type": "string", "description": "Required primary key."},
+        "title": {"type": "string", "description": "Required task title."},
+        "status": {"type": "string", "enum": ["сегодня", "фокус", "жду", "архив", "сделано", "отложено", "делегирована"]},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "createdAt": {"type": "string", "format": "date-time"},
+        "updatedAt": {"type": "string", "format": "date-time"}
+      }
+    },
+    "patchEnvelope": {
+      "type": "object",
+      "required": ["version", "source", "patch"],
+      "properties": {
+        "version": {"const": "voice-list-contract/v12"},
+        "actionId": {"type": "string"},
+        "source": {"enum": ["ui", "voice", "heuristic", "model", "undo"]},
+        "pressedItemId": {"type": ["string", "null"]},
+        "transcript": {"type": "string"},
+        "filter": {
+          "type": "object",
+          "properties": {
+            "query": {"type": "string"},
+            "statuses": {"type": "array", "items": {"type": "string"}},
+            "tags": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "patch": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["op"],
+            "properties": {
+              "op": {"enum": ["addTask", "updateTask", "archiveTask", "deleteTask", "clearFilter", "setFilter"]},
+              "id": {"type": "string"},
+              "task": {"$ref": "#/task"},
+              "set": {"type": "object"},
+              "addTags": {"type": "array", "items": {"type": "string"}},
+              "removeTags": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "ui": {
+          "type": "object",
+          "properties": {
+            "message": {"type": "string"},
+            "selection": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    }
+  }
+  </script>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #111827;
+      --panel-2: #162033;
+      --text: #f4f7fb;
+      --muted: #9aa8bf;
+      --line: rgba(255,255,255,.11);
+      --accent: #7dd3fc;
+      --accent-2: #a7f3d0;
+      --danger: #fb7185;
+      --warn: #fbbf24;
+      --shadow: 0 18px 60px rgba(0,0,0,.35);
+      --radius: 18px;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
+    body { padding: 16px 14px calc(22px + var(--safe-bottom)); -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    button, input, textarea, select { font: inherit; }
+    button { -webkit-tap-highlight-color: transparent; }
+
+    .app { max-width: 860px; margin: 0 auto; display: grid; gap: 14px; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    h1 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
+    .subtitle { margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.35; }
+    .badge { border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+    .panel { background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025)); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+    .panel-pad { padding: 14px; }
+
+    .controls { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: stretch; }
+    .primary-btn, .secondary-btn, .small-btn { border: 0; border-radius: 16px; color: #08111f; background: var(--accent); font-weight: 800; min-height: 58px; padding: 0 16px; cursor: pointer; }
+    .primary-btn { font-size: 20px; letter-spacing: -.02em; }
+    .secondary-btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); min-width: 94px; }
+    .small-btn { min-height: 42px; font-size: 14px; border-radius: 12px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+    .danger { color: white; background: rgba(251,113,133,.18); border-color: rgba(251,113,133,.45); }
+
+    .active-flash { outline: 3px solid rgba(125,211,252,.85); transform: scale(.995); }
+    .ptt-active { outline: 3px solid rgba(167,243,208,.95); box-shadow: 0 0 0 8px rgba(167,243,208,.10); }
+
+    .manual { margin-top: 10px; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .manual input { width: 100%; border: 1px solid var(--line); background: rgba(255,255,255,.06); color: var(--text); border-radius: 14px; min-height: 46px; padding: 0 12px; -webkit-user-select: text; user-select: text; }
+
+    .voice-strip { min-height: 44px; display: grid; gap: 4px; padding: 10px 12px; border-radius: 14px; background: rgba(0,0,0,.22); border: 1px solid var(--line); margin-top: 10px; }
+    .voice-status { font-size: 12px; color: var(--muted); }
+    .voice-text { font-size: 15px; line-height: 1.35; color: var(--text); white-space: pre-wrap; }
+    .voice-text:empty::before { content: "Долгое нажатие: нажал → сказал → отпустил"; color: var(--muted); }
+
+    .filterbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+    .chip { border: 1px solid var(--line); background: rgba(255,255,255,.05); color: var(--muted); border-radius: 999px; padding: 6px 9px; font-size: 12px; }
+    .chip strong { color: var(--text); }
+
+    .task-list { list-style: none; margin: 0; padding: 0; }
+    .task { display: grid; gap: 8px; padding: 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.025); cursor: pointer; transition: transform .12s ease, outline .12s ease, background .12s ease; }
+    .task:last-child { border-bottom: 0; }
+    .task-title { font-size: 17px; line-height: 1.35; font-weight: 700; letter-spacing: -.01em; word-break: break-word; }
+    .task-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .status { border-radius: 999px; padding: 5px 9px; font-size: 12px; font-weight: 750; color: #07101e; background: var(--accent-2); }
+    .tag { border-radius: 999px; padding: 5px 8px; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.07); border: 1px solid var(--line); }
+    .empty { padding: 22px 16px; color: var(--muted); line-height: 1.45; }
+
+    details { border-top: 1px solid var(--line); }
+    summary { cursor: pointer; padding: 14px; color: var(--text); font-weight: 800; }
+    .details-body { padding: 0 14px 14px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .settings-grid { display: grid; gap: 10px; }
+    .settings-grid label { display: grid; gap: 6px; color: var(--muted); }
+    .settings-grid input, .settings-grid select, .settings-grid textarea { width: 100%; border: 1px solid var(--line); background: rgba(255,255,255,.06); color: var(--text); border-radius: 12px; min-height: 42px; padding: 8px 10px; -webkit-user-select: text; user-select: text; }
+    .settings-grid textarea { min-height: 110px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    pre { white-space: pre-wrap; word-break: break-word; background: rgba(0,0,0,.22); border: 1px solid var(--line); border-radius: 14px; padding: 10px; color: #dbeafe; max-height: 360px; overflow: auto; -webkit-user-select: text; user-select: text; }
+
+    .toast { position: fixed; left: 14px; right: 14px; bottom: calc(14px + var(--safe-bottom)); max-width: 860px; margin: 0 auto; background: rgba(17,24,39,.96); color: var(--text); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow); transform: translateY(120%); opacity: 0; transition: .22s ease; z-index: 50; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+
+    @media (max-width: 480px) {
+      body { padding-left: 10px; padding-right: 10px; }
+      .controls { grid-template-columns: 1fr; }
+      .secondary-btn { min-width: 0; }
+      .manual { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app" id="app">
+    <section class="topbar">
+      <div>
+        <h1>Voice List v12</h1>
+        <div class="subtitle">Одна статическая страница. Долгое нажатие на любой активный элемент = голосовая команда.</div>
+      </div>
+      <div class="badge" id="storageBadge">storage</div>
+    </section>
+
+    <section class="panel panel-pad" aria-label="Управление">
+      <div class="controls">
+        <button class="primary-btn" id="mainVoiceBtn" data-ptt="main" type="button">Найти/Добавить</button>
+        <button class="secondary-btn" id="undoBtn" data-ptt="undo" type="button">Undo</button>
+      </div>
+      <div class="manual">
+        <input id="manualCommand" autocomplete="off" inputmode="text" placeholder="Текстовая команда для проверки: добавь купить воду / найди выполненные с тегом дом" />
+        <button class="small-btn" id="manualRunBtn" data-ptt="manual" type="button">Выполнить</button>
+      </div>
+      <div class="voice-strip" aria-live="polite">
+        <div class="voice-status" id="voiceStatus">Готово</div>
+        <div class="voice-text" id="voiceText"></div>
+      </div>
+      <div class="filterbar" id="filterBar"></div>
+    </section>
+
+    <section class="panel" aria-label="Список задач">
+      <ul class="task-list" id="taskList"></ul>
+      <div class="empty" id="emptyState" hidden>
+        Список пуст. Зажмите «Найти/Добавить» и скажите: «добавь купить воду».
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Схема, настройки и диагностика">
+      <details>
+        <summary>Раздел данных: JSON-схема списка задач</summary>
+        <div class="details-body">
+          <pre id="schemaView"></pre>
+        </div>
+      </details>
+
+      <details>
+        <summary>Раздел оформления: HTML/CSS интерфейса</summary>
+        <div class="details-body">
+          <p>Обязательные элементы интерфейса: большая кнопка <strong>«Найти/Добавить»</strong>, кнопка <strong>Undo</strong>, список задач. Каждый элемент списка содержит <code>id</code>, <code>title</code>, <code>status</code>, <code>tags</code>.</p>
+          <p>Каждая кнопка и задача имеет <code>data-ptt</code> и работает как PTT: короткое нажатие подсвечивает, долгое запускает голосовой ввод.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Раздел настроек: fallback-модель</summary>
+        <div class="details-body settings-grid">
+          <label>Провайдер
+            <select id="providerInput">
+              <option value="openrouter">OpenRouter</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+            </select>
+          </label>
+          <label>Base URL
+            <input id="baseUrlInput" placeholder="Автоматически по провайдеру" />
+          </label>
+          <label>Model
+            <input id="modelInput" placeholder="openai/gpt-4.1-mini, gpt-4.1-mini, claude-3-5-haiku-latest" />
+          </label>
+          <label>API key
+            <input id="apiKeyInput" type="password" autocomplete="off" placeholder="Хранится локально в браузере" />
+          </label>
+          <label>System prompt fallback-модели
+            <textarea id="systemPromptInput"></textarea>
+          </label>
+          <div class="settings-actions">
+            <button class="small-btn" id="saveSettingsBtn" data-ptt="settings-save" type="button">Сохранить настройки</button>
+            <button class="small-btn danger" id="clearAllBtn" data-ptt="clear-all" type="button">Очистить список</button>
+          </div>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+  /*
+    ============================================================
+    SECTION 1. GLOBAL CONTRACT AND APPLICATION STATE
+    ============================================================
+
+    Contract version: voice-list-contract/v12
+
+    Every module receives and returns data through this shared JSON envelope:
+
+    {
+      version: "voice-list-contract/v12",
+      actionId: string,
+      source: "ui" | "voice" | "heuristic" | "model" | "undo",
+      pressedItemId: string | null,
+      transcript: string,
+      filter: { query: string, statuses: string[], tags: string[] } | null,
+      patch: [
+        { op: "addTask", task: Task },
+        { op: "updateTask", id: string, set?: Partial<Task>, addTags?: string[], removeTags?: string[] },
+        { op: "archiveTask", id: string },
+        { op: "deleteTask", id: string },
+        { op: "setFilter", filter: Filter },
+        { op: "clearFilter" }
+      ],
+      ui: { message: string, selection?: string[] }
+    }
+
+    Task:
+    {
+      id: string,              // required key
+      title: string,           // required
+      status: Status,          // required enum
+      tags: string[],          // arbitrary tags
+      createdAt?: ISO string,
+      updatedAt?: ISO string
+    }
+
+    Status enum:
+    ["сегодня", "фокус", "жду", "архив", "сделано", "отложено", "делегирована"]
+  */
+
+  const CONTRACT_VERSION = 'voice-list-contract/v12';
+  const STATUS = Object.freeze(['сегодня', 'фокус', 'жду', 'архив', 'сделано', 'отложено', 'делегирована']);
+  const DEFAULT_STATUS = 'отложено';
+  const STORAGE_KEY = 'voice-list-v12-state';
+  const SETTINGS_KEY = 'voice-list-v12-settings';
+  const DB_NAME = 'voice-list-v12-db';
+  const DB_STORE = 'kv';
+
+  const DEFAULT_SYSTEM_PROMPT = `Ты модуль извлечения команды для PWA списка задач.\nВерни только JSON без markdown.\nКонтракт: {"version":"voice-list-contract/v12","source":"model","pressedItemId":string|null,"transcript":string,"filter":null|{"query":"","statuses":[],"tags":[]},"patch":[],"ui":{"message":""}}.\nДопустимые операции patch: addTask, updateTask, archiveTask, deleteTask, setFilter, clearFilter.\nTask: {id,title,status,tags,createdAt,updatedAt}.\nСтатусы только: сегодня, фокус, жду, архив, сделано, отложено, делегирована.\nЕсли команда не меняет данные, верни setFilter или clearFilter.\nЕсли сказано "это ..." для выбранной задачи: статус, если слово является статусом; иначе добавить тег.\nЕсли сказано "это не ..." для выбранной задачи: убрать тег; если убирается текущий статус, поставить статус отложено.`;
+
+  const App = {
+    state: {
+      tasks: [],
+      filter: { query: '', statuses: [], tags: [] },
+      history: [],
+      lastAction: null
+    },
+    settings: {
+      provider: 'openrouter',
+      baseUrl: '',
+      model: 'openai/gpt-4.1-mini',
+      apiKey: '',
+      systemPrompt: DEFAULT_SYSTEM_PROMPT
+    },
+    db: null,
+    ptt: {
+      timer: null,
+      isLongPress: false,
+      activeEl: null,
+      context: null,
+      recognition: null,
+      transcriptFinal: '',
+      transcriptInterim: '',
+      stopRequested: false,
+      startedAt: 0
+    }
+  };
+
+  /*
+    ============================================================
+    SECTION 2. DOM HELPERS AND UI FEEDBACK MODULE
+    ============================================================
+  */
+
+  const $ = (id) => document.getElementById(id);
+
+  function nowIso() {
+    return new Date().toISOString();
+  }
+
+  function makeId(prefix = 'task') {
+    return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function cloneJson(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function normalizeText(text) {
+    return String(text || '')
+      .toLowerCase()
+      .replace(/[ё]/g, 'е')
+      .replace(/[.,!?;:()[\]{}«»"']/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function normalizeTag(text) {
+    return normalizeText(text).replace(/^#/, '').replace(/\s+/g, '-').slice(0, 40);
+  }
+
+  function unique(arr) {
+    return [...new Set((arr || []).filter(Boolean))];
+  }
+
+  function setVoiceStatus(status, text = null) {
+    $('voiceStatus').textContent = status;
+    if (text !== null) $('voiceText').textContent = text;
+  }
+
+  function toast(message, ms = 2300) {
+    const el = $('toast');
+    el.textContent = message;
+    el.classList.add('show');
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => el.classList.remove('show'), ms);
+  }
+
+  function flashElement(el) {
+    if (!el) return;
+    el.classList.add('active-flash');
+    setTimeout(() => el.classList.remove('active-flash'), 500);
+  }
+
+  /*
+    ============================================================
+    SECTION 3. STORAGE MODULE: IndexedDB + localStorage fallback
+    ============================================================
+
+    Public functions:
+    - initStorage()
+    - loadPersistedState()
+    - persistState()
+    - loadSettings()
+    - persistSettings()
+  */
+
+  function initStorage() {
+    return new Promise((resolve) => {
+      if (!('indexedDB' in window)) {
+        $('storageBadge').textContent = 'localStorage';
+        resolve(null);
+        return;
+      }
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+      };
+      req.onsuccess = () => {
+        App.db = req.result;
+        $('storageBadge').textContent = 'IndexedDB';
+        resolve(App.db);
+      };
+      req.onerror = () => {
+        $('storageBadge').textContent = 'localStorage';
+        resolve(null);
+      };
+    });
+  }
+
+  function idbGet(key) {
+    return new Promise((resolve, reject) => {
+      if (!App.db) return resolve(null);
+      const tx = App.db.transaction(DB_STORE, 'readonly');
+      const store = tx.objectStore(DB_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function idbSet(key, value) {
+    return new Promise((resolve, reject) => {
+      if (!App.db) return resolve(false);
+      const tx = App.db.transaction(DB_STORE, 'readwrite');
+      const store = tx.objectStore(DB_STORE);
+      const req = store.put(value, key);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function loadPersistedState() {
+    let data = null;
+    try { data = await idbGet(STORAGE_KEY); } catch (_) { data = null; }
+    if (!data) {
+      try { data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch (_) { data = null; }
+    }
+    if (data && Array.isArray(data.tasks)) {
+      App.state = {
+        tasks: normalizeTasks(data.tasks),
+        filter: data.filter || { query: '', statuses: [], tags: [] },
+        history: Array.isArray(data.history) ? data.history.slice(-30) : [],
+        lastAction: data.lastAction || null
+      };
+    }
+  }
+
+  async function persistState() {
+    const payload = cloneJson(App.state);
+    try { await idbSet(STORAGE_KEY, payload); } catch (_) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch (_) {}
+  }
+
+  async function loadSettings() {
+    let data = null;
+    try { data = await idbGet(SETTINGS_KEY); } catch (_) { data = null; }
+    if (!data) {
+      try { data = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch (_) { data = null; }
+    }
+    App.settings = { ...App.settings, ...(data || {}) };
+  }
+
+  async function persistSettings() {
+    const payload = cloneJson(App.settings);
+    try { await idbSet(SETTINGS_KEY, payload); } catch (_) {}
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload)); } catch (_) {}
+  }
+
+  function normalizeTasks(tasks) {
+    return tasks
+      .filter(t => t && t.id && t.title)
+      .map(t => ({
+        id: String(t.id),
+        title: String(t.title),
+        status: STATUS.includes(t.status) ? t.status : DEFAULT_STATUS,
+        tags: unique((t.tags || []).map(normalizeTag)),
+        createdAt: t.createdAt || nowIso(),
+        updatedAt: t.updatedAt || nowIso()
+      }));
+  }
+
+  /*
+    ============================================================
+    SECTION 4. RENDER MODULE
+    ============================================================
+
+    Public functions:
+    - renderApp()
+    - getVisibleTasks()
+  */
+
+  function getVisibleTasks() {
+    const filter = App.state.filter || { query: '', statuses: [], tags: [] };
+    const q = normalizeText(filter.query || '');
+    const statuses = new Set(filter.statuses || []);
+    const tags = new Set((filter.tags || []).map(normalizeTag));
+
+    return App.state.tasks.filter(task => {
+      if (statuses.size && !statuses.has(task.status)) return false;
+      if (tags.size && !task.tags.some(t => tags.has(t))) return false;
+      if (!q) return true;
+      const hay = normalizeText(`${task.title} ${task.status} ${task.tags.join(' ')}`);
+      return hay.includes(q);
+    });
+  }
+
+  function renderApp() {
+    $('schemaView').textContent = JSON.stringify(JSON.parse($('voice-list-contract-json').textContent), null, 2);
+    renderSettings();
+    renderFilterBar();
+    renderTasks();
+    updateUndoButton();
+  }
+
+  function renderTasks() {
+    const list = $('taskList');
+    const tasks = getVisibleTasks();
+    list.innerHTML = '';
+    $('emptyState').hidden = tasks.length > 0;
+
+    tasks.forEach(task => {
+      const li = document.createElement('li');
+      li.className = 'task';
+      li.dataset.ptt = 'task';
+      li.dataset.taskId = task.id;
+      li.innerHTML = `
+        <div class="task-title"></div>
+        <div class="task-meta">
+          <span class="status"></span>
+          ${task.tags.map(tag => `<span class="tag"></span>`).join('')}
+        </div>`;
+      li.querySelector('.task-title').textContent = task.title;
+      li.querySelector('.status').textContent = task.status;
+      const tagEls = li.querySelectorAll('.tag');
+      task.tags.forEach((tag, i) => { tagEls[i].textContent = `#${tag}`; });
+      bindPttElement(li);
+      list.appendChild(li);
+    });
+  }
+
+  function renderFilterBar() {
+    const f = App.state.filter || { query: '', statuses: [], tags: [] };
+    const parts = [];
+    if (f.query) parts.push(`<span class="chip">поиск: <strong>${escapeHtml(f.query)}</strong></span>`);
+    (f.statuses || []).forEach(s => parts.push(`<span class="chip">статус: <strong>${escapeHtml(s)}</strong></span>`));
+    (f.tags || []).forEach(t => parts.push(`<span class="chip">тег: <strong>#${escapeHtml(t)}</strong></span>`));
+    if (parts.length) parts.push(`<button class="small-btn" id="clearFilterBtn" data-ptt="clear-filter" type="button">Сбросить фильтр</button>`);
+    $('filterBar').innerHTML = parts.join('') || '<span class="chip">Фильтр не активен</span>';
+    const clearBtn = $('clearFilterBtn');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => applyEnvelope({
+        version: CONTRACT_VERSION,
+        source: 'ui',
+        patch: [{ op: 'clearFilter' }],
+        ui: { message: 'Фильтр сброшен' }
+      }));
+      bindPttElement(clearBtn);
+    }
+  }
+
+  function renderSettings() {
+    $('providerInput').value = App.settings.provider;
+    $('baseUrlInput').value = App.settings.baseUrl || '';
+    $('modelInput').value = App.settings.model || '';
+    $('apiKeyInput').value = App.settings.apiKey || '';
+    $('systemPromptInput').value = App.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+  }
+
+  function updateUndoButton() {
+    $('undoBtn').disabled = !App.state.history.length;
+    $('undoBtn').style.opacity = App.state.history.length ? '1' : '.55';
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    }[ch]));
+  }
+
+  /*
+    ============================================================
+    SECTION 5. PATCH AND UNDO MODULE
+    ============================================================
+
+    Public functions:
+    - applyEnvelope(envelope)
+    - undoLast()
+  */
+
+  async function applyEnvelope(envelope) {
+    const clean = normalizeEnvelope(envelope);
+    const shouldSnapshot = clean.patch.some(op => !['setFilter', 'clearFilter'].includes(op.op));
+    const before = shouldSnapshot ? cloneJson(App.state.tasks) : null;
+
+    for (const op of clean.patch) {
+      applyOperation(op, clean);
+    }
+
+    if (shouldSnapshot) {
+      App.state.history.push({
+        actionId: clean.actionId,
+        before,
+        after: cloneJson(App.state.tasks),
+        transcript: clean.transcript || '',
+        at: nowIso(),
+        message: clean.ui.message || ''
+      });
+      App.state.history = App.state.history.slice(-30);
+    }
+
+    App.state.lastAction = clean;
+    await persistState();
+    renderApp();
+    if (clean.ui && clean.ui.message) toast(clean.ui.message);
+    return clean;
+  }
+
+  function normalizeEnvelope(envelope) {
+    const e = envelope || {};
+    return {
+      version: CONTRACT_VERSION,
+      actionId: e.actionId || makeId('action'),
+      source: e.source || 'ui',
+      pressedItemId: e.pressedItemId || null,
+      transcript: e.transcript || '',
+      filter: e.filter || null,
+      patch: Array.isArray(e.patch) ? e.patch : [],
+      ui: e.ui || { message: '' }
+    };
+  }
+
+  function applyOperation(op, envelope) {
+    const tNow = nowIso();
+    if (op.op === 'addTask' && op.task) {
+      const task = normalizeTasks([{ ...op.task, id: op.task.id || makeId('task') }])[0];
+      if (task) App.state.tasks.unshift(task);
+      return;
+    }
+
+    if (op.op === 'updateTask' && op.id) {
+      const idx = App.state.tasks.findIndex(t => t.id === op.id);
+      if (idx < 0) return;
+      const current = App.state.tasks[idx];
+      const next = { ...current };
+      if (op.set) {
+        if (typeof op.set.title === 'string' && op.set.title.trim()) next.title = op.set.title.trim();
+        if (STATUS.includes(op.set.status)) next.status = op.set.status;
+        if (Array.isArray(op.set.tags)) next.tags = unique(op.set.tags.map(normalizeTag));
+      }
+      if (Array.isArray(op.addTags)) next.tags = unique([...next.tags, ...op.addTags.map(normalizeTag)]);
+      if (Array.isArray(op.removeTags)) {
+        const remove = new Set(op.removeTags.map(normalizeTag));
+        next.tags = next.tags.filter(tag => !remove.has(tag));
+      }
+      next.updatedAt = tNow;
+      App.state.tasks[idx] = next;
+      return;
+    }
+
+    if (op.op === 'archiveTask' && op.id) {
+      applyOperation({ op: 'updateTask', id: op.id, set: { status: 'архив' } }, envelope);
+      return;
+    }
+
+    if (op.op === 'deleteTask' && op.id) {
+      App.state.tasks = App.state.tasks.filter(t => t.id !== op.id);
+      return;
+    }
+
+    if (op.op === 'setFilter') {
+      const filter = op.filter || envelope.filter || { query: '', statuses: [], tags: [] };
+      App.state.filter = {
+        query: String(filter.query || '').trim(),
+        statuses: unique((filter.statuses || []).filter(s => STATUS.includes(s))),
+        tags: unique((filter.tags || []).map(normalizeTag))
+      };
+      return;
+    }
+
+    if (op.op === 'clearFilter') {
+      App.state.filter = { query: '', statuses: [], tags: [] };
+    }
+  }
+
+  async function undoLast() {
+    const last = App.state.history.pop();
+    if (!last) {
+      toast('Нет команды для Undo');
+      return;
+    }
+    App.state.tasks = normalizeTasks(last.before || []);
+    App.state.lastAction = {
+      version: CONTRACT_VERSION,
+      source: 'undo',
+      patch: [],
+      ui: { message: 'Последняя голосовая команда отменена' }
+    };
+    await persistState();
+    renderApp();
+    toast('Undo: команда отменена');
+  }
+
+  /*
+    ============================================================
+    SECTION 6. SEARCH MODULE
+    ============================================================
+
+    Public functions:
+    - buildSearchFilter(text)
+    - findBestTaskByText(text)
+  */
+
+  const STATUS_SYNONYMS = [
+    ['сегодня', ['сегодня', 'today', 'на сегодня']],
+    ['фокус', ['фокус', 'важное', 'главное', 'focus']],
+    ['жду', ['жду', 'ожидаю', 'ожидание', 'waiting', 'wait']],
+    ['архив', ['архив', 'архивные', 'удаленные', 'удалённые']],
+    ['сделано', ['сделано', 'готово', 'готовые', 'выполнено', 'выполненные', 'закрыто', 'done']],
+    ['отложено', ['отложено', 'позже', 'потом', 'deferred']],
+    ['делегирована', ['делегирована', 'делегировано', 'поручено', 'отдал', 'delegated']]
+  ];
+
+  function detectStatus(text) {
+    const n = normalizeText(text);
+    for (const [status, words] of STATUS_SYNONYMS) {
+      if (words.some(w => n.includes(normalizeText(w)))) return status;
+    }
+    return null;
+  }
+
+  function detectAllStatuses(text) {
+    const n = normalizeText(text);
+    return STATUS_SYNONYMS
+      .filter(([, words]) => words.some(w => n.includes(normalizeText(w))))
+      .map(([status]) => status);
+  }
+
+  function extractExplicitTags(text) {
+    const n = normalizeText(text);
+    const tags = [];
+    const hashMatches = String(text || '').match(/#[\p{L}\p{N}_-]+/gu) || [];
+    hashMatches.forEach(x => tags.push(normalizeTag(x)));
+
+    const tagRegexes = [
+      /(?:с\s+тегом|по\s+тегу|тег|тэг)\s+([\p{L}\p{N}_-]+)/giu,
+      /(?:tag)\s+([\p{L}\p{N}_-]+)/giu
+    ];
+    for (const re of tagRegexes) {
+      let m;
+      while ((m = re.exec(n))) tags.push(normalizeTag(m[1]));
+    }
+    return unique(tags);
+  }
+
+  function buildSearchFilter(text) {
+    let q = normalizeText(text)
+      .replace(/^(найди|покажи|поиск|искать|найти)\s+/, '')
+      .trim();
+    const statuses = detectAllStatuses(q);
+    const tags = extractExplicitTags(q);
+
+    for (const [, words] of STATUS_SYNONYMS) {
+      for (const w of words) q = q.replace(new RegExp(`\\b${escapeRegExp(normalizeText(w))}\\b`, 'giu'), ' ');
+    }
+    q = q
+      .replace(/(?:с\s+тегом|по\s+тегу|тег|тэг|tag)\s+[\p{L}\p{N}_-]+/giu, ' ')
+      .replace(/#[\p{L}\p{N}_-]+/gu, ' ')
+      .replace(/\b(с|со|и|в|во|за|по)\b/giu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return { query: q, statuses: unique(statuses), tags };
+  }
+
+  function findBestTaskByText(text) {
+    const q = normalizeText(text);
+    if (!q) return null;
+    const activeTasks = App.state.tasks.filter(t => t.status !== 'архив');
+    let best = null;
+    let bestScore = 0;
+    for (const task of activeTasks) {
+      const title = normalizeText(task.title);
+      const hay = normalizeText(`${task.title} ${task.tags.join(' ')}`);
+      let score = 0;
+      if (title === q) score += 10;
+      if (title.includes(q) || q.includes(title)) score += 6;
+      for (const word of q.split(' ')) if (word.length > 2 && hay.includes(word)) score += 1;
+      if (score > bestScore) { best = task; bestScore = score; }
+    }
+    return bestScore > 0 ? best : null;
+  }
+
+  function escapeRegExp(str) {
+    return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /*
+    ============================================================
+    SECTION 7. COMMAND EXTRACTION MODULE
+    ============================================================
+
+    Public functions:
+    - extractCommand(pressedItem, transcript)
+    - handleCommand(pressedItem, transcript)
+  */
+
+  function getPressedTask(pressedItemId) {
+    return App.state.tasks.find(t => t.id === pressedItemId) || null;
+  }
+
+  function envelopeBase(source, pressedItemId, transcript) {
+    return {
+      version: CONTRACT_VERSION,
+      actionId: makeId('action'),
+      source,
+      pressedItemId: pressedItemId || null,
+      transcript: transcript || '',
+      filter: null,
+      patch: [],
+      ui: { message: '' }
+    };
+  }
+
+  function extractCommand(pressedItemId, transcript) {
+    const raw = String(transcript || '').trim();
+    const n = normalizeText(raw);
+    const selected = getPressedTask(pressedItemId);
+    const e = envelopeBase('heuristic', pressedItemId, raw);
+    if (!n) return null;
+
+    if (/^(отмени|undo|назад|верни)\b/.test(n)) {
+      e.patch = [];
+      e.ui.message = '__UNDO__';
+      return e;
+    }
+
+    if (/^(сбрось фильтр|очисти фильтр|покажи все|все задачи)\b/.test(n)) {
+      e.patch = [{ op: 'clearFilter' }];
+      e.ui.message = 'Показаны все задачи';
+      return e;
+    }
+
+    if (/^(найди|покажи|поиск|искать|найти)\b/.test(n)) {
+      const filter = buildSearchFilter(raw);
+      e.filter = filter;
+      e.patch = [{ op: 'setFilter', filter }];
+      e.ui.message = 'Фильтр применен';
+      return e;
+    }
+
+    const addMatch = n.match(/^(?:добавь|добавить|создай|создать|новая задача|новую задачу|запиши|записать)\s+(.+)$/i);
+    if (addMatch) {
+      const title = cleanupTaskTitle(addMatch[1]);
+      if (!title) return null;
+      e.patch = [{ op: 'addTask', task: makeTask(title) }];
+      e.ui.message = `Добавлено: ${title}`;
+      return e;
+    }
+
+    if (/\b(удали|удалить|в архив|архивируй|заархивируй|архив)\b/.test(n)) {
+      const target = selected || findBestTaskByText(n.replace(/\b(удали|удалить|в архив|архивируй|заархивируй|архив)\b/g, ''));
+      if (!target) return null;
+      e.patch = [{ op: 'archiveTask', id: target.id }];
+      e.ui.message = `В архив: ${target.title}`;
+      return e;
+    }
+
+    if (/\b(сделано|готово|выполнено|закрыто)\b/.test(n)) {
+      const target = selected || findBestTaskByText(n.replace(/\b(сделано|готово|выполнено|закрыто)\b/g, ''));
+      if (target) {
+        e.patch = [{ op: 'updateTask', id: target.id, set: { status: 'сделано' } }];
+        e.ui.message = `Сделано: ${target.title}`;
+        return e;
+      }
+    }
+
+    const changeMatch = n.match(/^(?:измени|изменить|переименуй|переименовать|назови|назвать)(?:\s+название)?(?:\s+(?:на|в))?\s+(.+)$/i);
+    if (changeMatch && selected) {
+      const title = cleanupTaskTitle(changeMatch[1]);
+      if (title) {
+        e.patch = [{ op: 'updateTask', id: selected.id, set: { title } }];
+        e.ui.message = `Название изменено: ${title}`;
+        return e;
+      }
+    }
+
+    const removeThisMatch = n.match(/^(?:это\s+не|убери|сними|без)\s+(.+)$/i);
+    if (removeThisMatch && selected) {
+      const value = cleanupValue(removeThisMatch[1]);
+      const status = detectStatus(value);
+      if (status && selected.status === status) {
+        e.patch = [{ op: 'updateTask', id: selected.id, set: { status: DEFAULT_STATUS } }];
+        e.ui.message = `Статус сброшен: ${selected.title}`;
+        return e;
+      }
+      const tags = extractExplicitTags(value);
+      const tag = tags[0] || normalizeTag(value.replace(/^тег\s+/, ''));
+      if (tag) {
+        e.patch = [{ op: 'updateTask', id: selected.id, removeTags: [tag] }];
+        e.ui.message = `Убран тег #${tag}`;
+        return e;
+      }
+    }
+
+    const thisMatch = n.match(/^(?:это|сделай|поставь|назначь)\s+(.+)$/i);
+    if (thisMatch && selected) {
+      const value = cleanupValue(thisMatch[1]);
+      const status = detectStatus(value);
+      if (status) {
+        e.patch = [{ op: 'updateTask', id: selected.id, set: { status } }];
+        e.ui.message = `Статус: ${status}`;
+        return e;
+      }
+      const tags = extractExplicitTags(value);
+      const tag = tags[0] || normalizeTag(value.replace(/^тег\s+/, ''));
+      if (tag) {
+        e.patch = [{ op: 'updateTask', id: selected.id, addTags: [tag] }];
+        e.ui.message = `Добавлен тег #${tag}`;
+        return e;
+      }
+    }
+
+    const status = detectStatus(n);
+    if (status && selected) {
+      e.patch = [{ op: 'updateTask', id: selected.id, set: { status } }];
+      e.ui.message = `Статус: ${status}`;
+      return e;
+    }
+
+    if (!selected) {
+      const filter = buildSearchFilter(raw);
+      const matches = App.state.tasks.filter(task => {
+        const hay = normalizeText(`${task.title} ${task.status} ${task.tags.join(' ')}`);
+        return normalizeText(raw).split(' ').some(w => w.length > 2 && hay.includes(w));
+      });
+      if (matches.length) {
+        e.filter = filter;
+        e.patch = [{ op: 'setFilter', filter }];
+        e.ui.message = `Найдено: ${matches.length}`;
+        return e;
+      }
+      e.patch = [{ op: 'addTask', task: makeTask(raw) }];
+      e.ui.message = `Добавлено: ${raw}`;
+      return e;
+    }
+
+    return null;
+  }
+
+  function makeTask(title) {
+    const tNow = nowIso();
+    return {
+      id: makeId('task'),
+      title: cleanupTaskTitle(title),
+      status: DEFAULT_STATUS,
+      tags: [],
+      createdAt: tNow,
+      updatedAt: tNow
+    };
+  }
+
+  function cleanupTaskTitle(text) {
+    return String(text || '')
+      .replace(/^задача\s+/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function cleanupValue(text) {
+    return String(text || '')
+      .replace(/^как\s+/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  async function handleCommand(pressedItemId, transcript) {
+    setVoiceStatus('Обработка команды', transcript || '');
+    const heuristic = extractCommand(pressedItemId, transcript);
+    if (heuristic && heuristic.ui.message === '__UNDO__') {
+      await undoLast();
+      setVoiceStatus('Готово', 'Undo выполнен');
+      return;
+    }
+    if (heuristic && heuristic.patch.length) {
+      await applyEnvelope(heuristic);
+      setVoiceStatus('Готово', transcript || '');
+      return;
+    }
+
+    const modelEnvelope = await fallbackModelExtract(pressedItemId, transcript);
+    if (modelEnvelope && modelEnvelope.patch && modelEnvelope.patch.length) {
+      await applyEnvelope(modelEnvelope);
+      setVoiceStatus('Готово', transcript || '');
+      return;
+    }
+
+    setVoiceStatus('Команда не распознана', transcript || '');
+    toast('Не удалось определить команду');
+  }
+
+  /*
+    ============================================================
+    SECTION 8. FALLBACK MODEL MODULE
+    ============================================================
+
+    Public functions:
+    - fallbackModelExtract(pressedItemId, transcript)
+
+    Supported providers:
+    - openrouter: /chat/completions compatible
+    - openai: /chat/completions compatible
+    - anthropic: /messages compatible
+  */
+
+  async function fallbackModelExtract(pressedItemId, transcript) {
+    const s = App.settings;
+    if (!s.apiKey || !s.model) return null;
+
+    const selected = getPressedTask(pressedItemId);
+    const payloadContext = {
+      contractVersion: CONTRACT_VERSION,
+      pressedItem: selected,
+      transcript,
+      currentTasks: App.state.tasks,
+      currentFilter: App.state.filter
+    };
+
+    try {
+      const raw = await callConfiguredModel(s, payloadContext);
+      const parsed = parseModelJson(raw);
+      if (!parsed) return null;
+      return normalizeModelEnvelope(parsed, pressedItemId, transcript);
+    } catch (err) {
+      console.error(err);
+      toast(`Fallback-модель недоступна: ${err.message || err}`);
+      return null;
+    }
+  }
+
+  async function callConfiguredModel(settings, payloadContext) {
+    const provider = settings.provider || 'openrouter';
+    const baseUrl = settings.baseUrl || defaultBaseUrl(provider);
+    const system = settings.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+    const user = JSON.stringify(payloadContext, null, 2);
+
+    if (provider === 'anthropic') {
+      const res = await fetch(baseUrl.replace(/\/$/, '') + '/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': settings.apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: settings.model,
+          max_tokens: 900,
+          temperature: 0,
+          system,
+          messages: [{ role: 'user', content: user }]
+        })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      return (data.content || []).map(x => x.text || '').join('\n');
+    }
+
+    const res = await fetch(baseUrl.replace(/\/$/, '') + '/chat/completions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'authorization': `Bearer ${settings.apiKey}`,
+        ...(provider === 'openrouter' ? { 'HTTP-Referer': location.href, 'X-Title': 'Voice List v12' } : {})
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        temperature: 0,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ]
+      })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
+
+  function defaultBaseUrl(provider) {
+    if (provider === 'openai') return 'https://api.openai.com/v1';
+    if (provider === 'anthropic') return 'https://api.anthropic.com/v1';
+    return 'https://openrouter.ai/api/v1';
+  }
+
+  function parseModelJson(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return null;
+    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const body = fenced ? fenced[1].trim() : raw;
+    try { return JSON.parse(body); } catch (_) { return null; }
+  }
+
+  function normalizeModelEnvelope(parsed, pressedItemId, transcript) {
+    const e = normalizeEnvelope({
+      ...parsed,
+      version: CONTRACT_VERSION,
+      source: 'model',
+      pressedItemId,
+      transcript
+    });
+    e.patch = e.patch.map(op => {
+      if (op.op === 'addTask' && op.task) return { ...op, task: normalizeTasks([{ ...op.task, id: op.task.id || makeId('task') }])[0] };
+      return op;
+    }).filter(Boolean);
+    return e;
+  }
+
+  /*
+    ============================================================
+    SECTION 9. VOICE COMMAND MODULE: Web Speech API PTT
+    ============================================================
+
+    Public functions:
+    - startVoiceSession(el, context)
+    - stopVoiceSession()
+
+    Behavior:
+    - pointer down starts long-press timer
+    - long press starts SpeechRecognition
+    - interim transcript streams to screen
+    - pointer up stops recognition and sends transcript to command extraction
+  */
+
+  function getSpeechRecognitionCtor() {
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  }
+
+  function startVoiceSession(el, context) {
+    const Ctor = getSpeechRecognitionCtor();
+    App.ptt.activeEl = el;
+    App.ptt.context = context;
+    App.ptt.transcriptFinal = '';
+    App.ptt.transcriptInterim = '';
+    App.ptt.stopRequested = false;
+    App.ptt.startedAt = Date.now();
+    el.classList.add('ptt-active');
+
+    if (!Ctor) {
+      setVoiceStatus('Голосовой API недоступен', 'Введите команду в текстовое поле и нажмите «Выполнить».');
+      toast('SpeechRecognition не найден в этом браузере');
+      return;
+    }
+
+    const rec = new Ctor();
+    App.ptt.recognition = rec;
+    rec.lang = 'ru-RU';
+    rec.interimResults = true;
+    rec.continuous = true;
+    rec.maxAlternatives = 1;
+
+    rec.onstart = () => setVoiceStatus('Слушаю: отпустите палец для выполнения', '');
+    rec.onerror = (event) => {
+      const msg = event.error ? `Ошибка голоса: ${event.error}` : 'Ошибка голосового ввода';
+      setVoiceStatus(msg, App.ptt.transcriptFinal || App.ptt.transcriptInterim || '');
+    };
+    rec.onresult = (event) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const piece = event.results[i][0]?.transcript || '';
+        if (event.results[i].isFinal) App.ptt.transcriptFinal += piece + ' ';
+        else interim += piece;
+      }
+      App.ptt.transcriptInterim = interim;
+      setVoiceStatus('Диктовка', `${App.ptt.transcriptFinal}${interim}`.trim());
+    };
+    rec.onend = async () => {
+      const transcript = `${App.ptt.transcriptFinal} ${App.ptt.transcriptInterim}`.replace(/\s+/g, ' ').trim();
+      cleanupVoiceSessionClasses();
+      if (App.ptt.stopRequested) await handleCommand(context.taskId || null, transcript);
+      else setVoiceStatus('Готово', transcript);
+    };
+
+    try { rec.start(); }
+    catch (err) {
+      cleanupVoiceSessionClasses();
+      setVoiceStatus('Не удалось запустить голос', String(err.message || err));
+    }
+  }
+
+  function stopVoiceSession() {
+    const rec = App.ptt.recognition;
+    App.ptt.stopRequested = true;
+    if (!rec) {
+      cleanupVoiceSessionClasses();
+      return;
+    }
+    try { rec.stop(); }
+    catch (_) { cleanupVoiceSessionClasses(); }
+  }
+
+  function cleanupVoiceSessionClasses() {
+    if (App.ptt.activeEl) App.ptt.activeEl.classList.remove('ptt-active');
+    App.ptt.activeEl = null;
+    App.ptt.recognition = null;
+  }
+
+  /*
+    ============================================================
+    SECTION 10. PTT BINDING AND USER ACTION MODULE
+    ============================================================
+
+    Public functions:
+    - bindPttElement(el)
+    - bindStaticUi()
+  */
+
+  function bindPttElement(el) {
+    if (!el || el.dataset.pttBound === '1') return;
+    el.dataset.pttBound = '1';
+    el.addEventListener('contextmenu', e => e.preventDefault());
+
+    el.addEventListener('pointerdown', (event) => {
+      if (event.button !== undefined && event.button !== 0) return;
+      App.ptt.isLongPress = false;
+      App.ptt.context = makePttContext(el);
+      clearTimeout(App.ptt.timer);
+      App.ptt.timer = setTimeout(() => {
+        App.ptt.isLongPress = true;
+        startVoiceSession(el, App.ptt.context);
+      }, 360);
+    }, { passive: true });
+
+    const finish = (event) => {
+      clearTimeout(App.ptt.timer);
+      if (App.ptt.isLongPress) {
+        event.preventDefault();
+        stopVoiceSession();
+        App.ptt.isLongPress = false;
+      } else {
+        flashElement(el);
+        handleShortTap(el);
+      }
+    };
+
+    el.addEventListener('pointerup', finish);
+    el.addEventListener('pointercancel', finish);
+    el.addEventListener('pointerleave', () => clearTimeout(App.ptt.timer));
+  }
+
+  function makePttContext(el) {
+    return {
+      type: el.dataset.ptt || 'unknown',
+      taskId: el.dataset.taskId || null
+    };
+  }
+
+  function handleShortTap(el) {
+    const type = el.dataset.ptt;
+    if (type === 'undo') undoLast();
+    if (type === 'main') $('manualCommand').focus();
+    if (type === 'manual') runManualCommand();
+    if (type === 'settings-save') saveSettingsFromForm();
+    if (type === 'clear-all') clearAllTasks();
+  }
+
+  function bindStaticUi() {
+    ['mainVoiceBtn', 'undoBtn', 'manualRunBtn', 'saveSettingsBtn', 'clearAllBtn'].forEach(id => bindPttElement($(id)));
+    $('manualCommand').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') runManualCommand();
+    });
+    $('providerInput').addEventListener('change', () => {
+      const provider = $('providerInput').value;
+      if (!$('baseUrlInput').value.trim()) $('baseUrlInput').placeholder = defaultBaseUrl(provider);
+    });
+  }
+
+  async function runManualCommand() {
+    const text = $('manualCommand').value.trim();
+    if (!text) return;
+    $('manualCommand').value = '';
+    await handleCommand(null, text);
+  }
+
+  async function clearAllTasks() {
+    const before = cloneJson(App.state.tasks);
+    if (!before.length) return toast('Список уже пуст');
+    App.state.history.push({ actionId: makeId('action'), before, after: [], transcript: 'clear all', at: nowIso(), message: 'Очистка списка' });
+    App.state.tasks = [];
+    App.state.filter = { query: '', statuses: [], tags: [] };
+    await persistState();
+    renderApp();
+    toast('Список очищен. Можно отменить через Undo');
+  }
+
+  /*
+    ============================================================
+    SECTION 11. SETTINGS MODULE
+    ============================================================
+
+    Public functions:
+    - saveSettingsFromForm()
+  */
+
+  async function saveSettingsFromForm() {
+    App.settings = {
+      provider: $('providerInput').value,
+      baseUrl: $('baseUrlInput').value.trim(),
+      model: $('modelInput').value.trim(),
+      apiKey: $('apiKeyInput').value.trim(),
+      systemPrompt: $('systemPromptInput').value.trim() || DEFAULT_SYSTEM_PROMPT
+    };
+    await persistSettings();
+    toast('Настройки сохранены локально');
+  }
+
+  /*
+    ============================================================
+    SECTION 12. BOOTSTRAP MODULE
+    ============================================================
+  */
+
+  async function bootstrap() {
+    await initStorage();
+    await loadPersistedState();
+    await loadSettings();
+    bindStaticUi();
+    renderApp();
+    setVoiceStatus('Готово', '');
+  }
+
+  bootstrap();
+  </script>
+</body>
+</html>
