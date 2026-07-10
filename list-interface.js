@@ -27,8 +27,19 @@ class ListInterface {
     try {
       // 1️⃣ Загрузить состояние (offline-first: localStorage → файл → дефолт)
       const localState = await this.storage.loadState();
-      this.model.items = localState.items || [];
-      this.model.version = localState.version || 0;
+
+      if (localState.items && localState.items.length > 0) {
+        this.model.items = localState.items;
+        this.model.version = localState.version || 0;
+      } else if (this.config.initialItems && this.config.initialItems.length > 0) {
+        // Ни localStorage, ни файл не дали данных — использовать начальные данные
+        this.model.items = this.config.initialItems;
+        this.model.version = 0;
+        this.storage.saveState({ items: this.model.items, version: this.model.version });
+      } else {
+        this.model.items = [];
+        this.model.version = localState.version || 0;
+      }
 
       // Восстановить лог действий
       const savedActionLog = this.storage.getActionLog();
