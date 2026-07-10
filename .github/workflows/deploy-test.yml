@@ -67,7 +67,7 @@ jobs:
           COMMIT=$(git rev-parse --short HEAD)
           echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
           echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
-          echo "url=https://htmlpreview.github.io/?https://raw.githubusercontent.com/${{ github.repository }}/${BRANCH}/list-manager.html?v=${COMMIT}" >> $GITHUB_OUTPUT
+          echo "url=https://021-lab.github.io/searchmydata/list-manager.html" >> $GITHUB_OUTPUT
 
       - name: Log deployment info
         run: |
@@ -84,42 +84,36 @@ jobs:
           test -f list-data.js || (echo "❌ list-data.js not found" && exit 1)
           echo "✓ All files exist"
 
-      - name: Test 2 - Check absolute URLs
+      - name: Test 2 - Check relative URLs (GitHub Pages deployment)
         run: |
-          echo "✓ Checking for absolute URLs..."
+          echo "✓ Checking for relative URLs..."
 
-          # Check CSS has absolute URL
-          if grep -q 'href="https://raw.githubusercontent.com' list-manager.html; then
-            echo "✓ CSS has absolute URL"
+          # CSS should use a relative path (served same-origin via GitHub Pages)
+          if grep -q 'href="list-manager.css"' list-manager.html; then
+            echo "✓ CSS uses relative path"
           else
-            echo "❌ CSS missing absolute URL"
+            echo "❌ CSS missing relative path"
             exit 1
           fi
 
-          # Check JS has absolute URL
-          if grep -q 'src="https://raw.githubusercontent.com.*list-data.js' list-manager.html; then
-            echo "✓ JS has absolute URL"
+          # JS should use a relative path
+          if grep -q 'src="list-data.js"' list-manager.html; then
+            echo "✓ JS uses relative path"
           else
-            echo "❌ JS missing absolute URL"
+            echo "❌ JS missing relative path"
             exit 1
           fi
 
-      - name: Test 3 - Check no relative paths (except external services)
+      - name: Test 3 - Check no absolute raw.githubusercontent.com references remain
         run: |
-          echo "✓ Checking for problematic relative paths..."
+          echo "✓ Checking there are no leftover absolute CDN references..."
 
-          # Should NOT have relative paths like href="file.css" or src="file.js"
-          if grep -E 'href="[^"]*\.css"' list-manager.html | grep -v "^#" | grep -v "https://"; then
-            echo "⚠️ Warning: Found relative CSS path"
+          if grep -q 'raw.githubusercontent.com' list-manager.html; then
+            echo "❌ Found leftover absolute raw.githubusercontent.com reference"
             exit 1
           fi
 
-          if grep -E 'src="[^"]*\.js"' list-manager.html | grep -v "^#" | grep -v "https://"; then
-            echo "⚠️ Warning: Found relative JS path"
-            exit 1
-          fi
-
-          echo "✓ No problematic relative paths found"
+          echo "✓ No absolute CDN references found"
 
       - name: Test 4 - Verify HTML syntax
         run: |
@@ -300,17 +294,14 @@ jobs:
       - name: Get deployment URL
         id: deployment
         run: |
-          BRANCH=$(git rev-parse --abbrev-ref HEAD)
-          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
-          echo "url=https://htmlpreview.github.io/?https://raw.githubusercontent.com/${{ github.repository }}/${BRANCH}/list-manager.html" >> $GITHUB_OUTPUT
+          echo "url=https://021-lab.github.io/searchmydata/list-manager.html" >> $GITHUB_OUTPUT
 
       - name: Run Integration & UI tests
         run: npx playwright test
         continue-on-error: true
         timeout-minutes: 15
         env:
-          GITHUB_REF_NAME: ${{ steps.deployment.outputs.branch }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          PAGES_URL: ${{ steps.deployment.outputs.url }}
 
       - name: Upload Playwright HTML report
         if: always()

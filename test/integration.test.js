@@ -4,9 +4,7 @@ const { test, expect } = require('@playwright/test');
 
 // Тест базовой функциональности
 test('should load initial data and display list', async ({ page }) => {
-  const BRANCH = process.env.GITHUB_REF_NAME || 'claude/repo-access-status-a865fx';
-  const REPO = process.env.GITHUB_REPOSITORY || '021-lab/searchmydata';
-  const URL = `https://htmlpreview.github.io/?https://raw.githubusercontent.com/${REPO}/${BRANCH}/list-manager.html`;
+  const URL = process.env.PAGES_URL || 'https://021-lab.github.io/searchmydata/list-manager.html';
 
   console.log(`\n📝 Загружаю: ${URL}\n`);
 
@@ -71,9 +69,7 @@ test('should load initial data and display list', async ({ page }) => {
 
 // Тест добавления нового элемента
 test('should add new item via modal', async ({ page }) => {
-  const BRANCH = process.env.GITHUB_REF_NAME || 'claude/repo-access-status-a865fx';
-  const REPO = process.env.GITHUB_REPOSITORY || '021-lab/searchmydata';
-  const URL = `https://htmlpreview.github.io/?https://raw.githubusercontent.com/${REPO}/${BRANCH}/list-manager.html`;
+  const URL = process.env.PAGES_URL || 'https://021-lab.github.io/searchmydata/list-manager.html';
 
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.waitForFunction(() => window.listInterface !== null, { timeout: 10000 });
