@@ -304,8 +304,8 @@ jobs:
           echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
           echo "url=https://htmlpreview.github.io/?https://raw.githubusercontent.com/${{ github.repository }}/${BRANCH}/list-manager.html" >> $GITHUB_OUTPUT
 
-      - name: Run UI tests
-        run: npx playwright test test/ui.test.js
+      - name: Run Integration & UI tests
+        run: npx playwright test
         continue-on-error: true
         timeout-minutes: 15
         env:

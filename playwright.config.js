@@ -13,7 +13,7 @@ const { defineConfig, devices } = require('@playwright/test');
 module.exports = defineConfig({
   testDir: './test',
   /* Run tests in files that end with .test.js */
-  testMatch: '**/ui.test.js',
+  testMatch: ['**/integration.test.js', '**/ui.test.js'],
   /* No local dev server needed - tests run against deployed version */
   // webServer: {
   //   command: 'npm run start',

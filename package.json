@@ -27,7 +27,8 @@
       "**/test/**/*.test.js"
     ],
     "testPathIgnorePatterns": [
-      "ui.test.js"
+      "ui.test.js",
+      "integration.test.js"
     ],
     "collectCoverageFrom": [
       "data-model.js",
