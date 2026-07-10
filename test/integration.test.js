@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
 
 // Тест базовой функциональности
 test('should load initial data and display list', async ({ page }) => {
-  const URL = process.env.PAGES_URL || 'https://021-lab.github.io/searchmydata/list-manager.html';
+  const URL = process.env.PAGES_URL || 'https://021-lab.github.io/SearchMyData/list-manager.html';
 
   console.log(`\n📝 Загружаю: ${URL}\n`);
 
@@ -69,7 +69,7 @@ test('should load initial data and display list', async ({ page }) => {
 
 // Тест добавления нового элемента
 test('should add new item via modal', async ({ page }) => {
-  const URL = process.env.PAGES_URL || 'https://021-lab.github.io/searchmydata/list-manager.html';
+  const URL = process.env.PAGES_URL || 'https://021-lab.github.io/SearchMyData/list-manager.html';
 
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.waitForFunction(() => window.listInterface !== null, { timeout: 10000 });
