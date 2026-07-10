@@ -294,14 +294,28 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run UI tests
-        run: npm run test:ui
-        continue-on-error: true
-        timeout-minutes: 10
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
 
-      - name: Upload Playwright results
+      - name: Get deployment URL
+        id: deployment
+        run: |
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+          echo "url=https://htmlpreview.github.io/?https://raw.githubusercontent.com/${{ github.repository }}/${BRANCH}/list-manager.html" >> $GITHUB_OUTPUT
+
+      - name: Run UI tests
+        run: npx playwright test test/ui.test.js
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          GITHUB_REF_NAME: ${{ steps.deployment.outputs.branch }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: playwright-results
-          path: test-results/
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30

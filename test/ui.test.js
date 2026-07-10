@@ -2,10 +2,15 @@
 
 const { test, expect } = require('@playwright/test');
 
+// Get the deployment URL from environment or use default
+const BRANCH = process.env.GITHUB_REF_NAME || 'claude/repo-access-status-a865fx';
+const REPO = process.env.GITHUB_REPOSITORY || '021-lab/searchmydata';
+const DEPLOYMENT_URL = `https://htmlpreview.github.io/?https://raw.githubusercontent.com/${REPO}/${BRANCH}/list-manager.html`;
+
 test.describe('List Manager UI', () => {
   test.beforeEach(async ({ page }) => {
     // Load the htmlpreview deployment
-    await page.goto('https://htmlpreview.github.io/?https://raw.githubusercontent.com/021-lab/searchmydata/claude/repo-access-status-a865fx/list-manager.html', {
+    await page.goto(DEPLOYMENT_URL, {
       waitUntil: 'networkidle'
     });
     // Wait for app initialization

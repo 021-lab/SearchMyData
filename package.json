@@ -26,6 +26,9 @@
     "testMatch": [
       "**/test/**/*.test.js"
     ],
+    "testPathIgnorePatterns": [
+      "ui.test.js"
+    ],
     "collectCoverageFrom": [
       "data-model.js",
       "event-bus.js",
