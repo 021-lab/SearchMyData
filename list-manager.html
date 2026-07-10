@@ -213,13 +213,9 @@ function saveUndoSnapshot() {
 }
 
 function toggleCollapse(itemId) {
-  const idx = items.findIndex(i => i.id === itemId);
-  if (idx < 0) return;
-  const item = items[idx];
-  const hasChildren = idx < items.length - 1 && (items[idx + 1].level || 0) > (item.level || 0);
-  if (!hasChildren) return;
-  item.collapsed = !item.collapsed;
-  render();
+  // Collapse/expand functionality for the new flat structure
+  // TODO: Implement collapse state tracking in model
+  // For now, this is a no-op
 }
 
 // ─── Drag (long press) ───────────────────────────────────────────────────────
@@ -562,7 +558,7 @@ function showDropPanel(anchorY) {
 function hideDrop() { hidePanel(dropPanel); dropAction = null; }
 
 function showTagPanel(anchorY, itemId) {
-  const item     = items.find(i => i.id === itemId);
+  const item     = listInterface.model.findItem(itemId);
   const itemTags = item?.tags || [];
   const notApplied = AVAILABLE_TAGS.filter(t => !itemTags.includes(t));
   const applied    = AVAILABLE_TAGS.filter(t =>  itemTags.includes(t));
@@ -766,17 +762,25 @@ function doDelete(itemId, wrapper) {
 }
 
 function doMoveUp(itemId) {
-  const idx = items.findIndex(i => i.id === itemId);
+  const idx = listInterface.model.items.findIndex(i => i.id === itemId);
   if (idx <= 0) { showToast('Уже в начале'); return; }
-  [items[idx - 1], items[idx]] = [items[idx], items[idx - 1]];
+  [listInterface.model.items[idx - 1], listInterface.model.items[idx]] = [listInterface.model.items[idx], listInterface.model.items[idx - 1]];
+  listInterface.storage.saveState({
+    items: listInterface.model.items,
+    version: listInterface.model.version
+  });
   render();
   showToast('Перемещено вверх');
 }
 
 function doMoveDown(itemId) {
-  const idx = items.findIndex(i => i.id === itemId);
-  if (idx >= items.length - 1) { showToast('Уже в конце'); return; }
-  [items[idx], items[idx + 1]] = [items[idx + 1], items[idx]];
+  const idx = listInterface.model.items.findIndex(i => i.id === itemId);
+  if (idx >= listInterface.model.items.length - 1) { showToast('Уже в конце'); return; }
+  [listInterface.model.items[idx], listInterface.model.items[idx + 1]] = [listInterface.model.items[idx + 1], listInterface.model.items[idx]];
+  listInterface.storage.saveState({
+    items: listInterface.model.items,
+    version: listInterface.model.version
+  });
   render();
   showToast('Перемещено вниз');
 }
