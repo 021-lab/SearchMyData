@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+package-lock.json
+npm-debug.log
+
+# Test results
+coverage/
+test-results/
+playwright-report/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist/
+build/
