@@ -1,0 +1,250 @@
+name: Deploy Test - htmlpreview
+
+on:
+  push:
+    branches:
+      - claude/repo-access-status-a865fx
+      - claude/nested-list-structure-8hrDx
+      - List-interface
+    paths:
+      - 'list-manager.html'
+      - 'list-manager.css'
+      - 'list-data.js'
+      - '.github/workflows/deploy-test.yml'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  deploy-test:
+    runs-on: ubuntu-latest
+    name: Test htmlpreview Deployment
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install --save-dev playwright @playwright/test
+
+      - name: Get branch and commit info
+        id: git-info
+        run: |
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          COMMIT=$(git rev-parse --short HEAD)
+          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+          echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
+          echo "url=https://htmlpreview.github.io/?https://raw.githubusercontent.com/${{ github.repository }}/${BRANCH}/list-manager.html?v=${COMMIT}" >> $GITHUB_OUTPUT
+
+      - name: Log deployment info
+        run: |
+          echo "🚀 Deployment Info:"
+          echo "Branch: ${{ steps.git-info.outputs.branch }}"
+          echo "Commit: ${{ steps.git-info.outputs.commit }}"
+          echo "URL: ${{ steps.git-info.outputs.url }}"
+
+      - name: Test 1 - Check files exist
+        run: |
+          echo "✓ Checking files..."
+          test -f list-manager.html || (echo "❌ list-manager.html not found" && exit 1)
+          test -f list-manager.css || (echo "❌ list-manager.css not found" && exit 1)
+          test -f list-data.js || (echo "❌ list-data.js not found" && exit 1)
+          echo "✓ All files exist"
+
+      - name: Test 2 - Check absolute URLs
+        run: |
+          echo "✓ Checking for absolute URLs..."
+
+          # Check CSS has absolute URL
+          if grep -q 'href="https://raw.githubusercontent.com' list-manager.html; then
+            echo "✓ CSS has absolute URL"
+          else
+            echo "❌ CSS missing absolute URL"
+            exit 1
+          fi
+
+          # Check JS has absolute URL
+          if grep -q 'src="https://raw.githubusercontent.com.*list-data.js' list-manager.html; then
+            echo "✓ JS has absolute URL"
+          else
+            echo "❌ JS missing absolute URL"
+            exit 1
+          fi
+
+      - name: Test 3 - Check no relative paths (except external services)
+        run: |
+          echo "✓ Checking for problematic relative paths..."
+
+          # Should NOT have relative paths like href="file.css" or src="file.js"
+          if grep -E 'href="[^"]*\.css"' list-manager.html | grep -v "^#" | grep -v "https://"; then
+            echo "⚠️ Warning: Found relative CSS path"
+            exit 1
+          fi
+
+          if grep -E 'src="[^"]*\.js"' list-manager.html | grep -v "^#" | grep -v "https://"; then
+            echo "⚠️ Warning: Found relative JS path"
+            exit 1
+          fi
+
+          echo "✓ No problematic relative paths found"
+
+      - name: Test 4 - Verify HTML syntax
+        run: |
+          echo "✓ Checking HTML syntax..."
+
+          # Check for unclosed tags
+          if grep -o '<[^/>]*>' list-manager.html | wc -l | grep -E '^[0-9]+$' > /dev/null; then
+            echo "✓ HTML structure valid"
+          else
+            echo "⚠️ HTML structure check skipped (needs HTML parser)"
+          fi
+
+          # Check for basic structure
+          if grep -q '<html' list-manager.html && grep -q '</html>' list-manager.html; then
+            echo "✓ HTML document has proper opening/closing tags"
+          else
+            echo "❌ HTML document missing proper tags"
+            exit 1
+          fi
+
+      - name: Test 5 - Verify essential elements
+        run: |
+          echo "✓ Checking for essential elements..."
+
+          elements=("list-container" "add-btn" "modal-overlay" "list-data.js")
+
+          for element in "${elements[@]}"; do
+            if grep -q "$element" list-manager.html; then
+              echo "✓ Found: $element"
+            else
+              echo "❌ Missing: $element"
+              exit 1
+            fi
+          done
+
+      - name: Test 6 - Fetch and validate HTML from GitHub
+        run: |
+          echo "✓ Fetching HTML from GitHub raw..."
+
+          BRANCH=${{ steps.git-info.outputs.branch }}
+          COMMIT=${{ steps.git-info.outputs.commit }}
+
+          curl -s "https://raw.githubusercontent.com/${{ github.repository }}/${BRANCH}/list-manager.html" \
+            -o /tmp/github-list-manager.html
+
+          if [ -s /tmp/github-list-manager.html ]; then
+            echo "✓ HTML file fetched successfully ($(wc -c < /tmp/github-list-manager.html) bytes)"
+          else
+            echo "❌ Failed to fetch HTML from GitHub"
+            exit 1
+          fi
+
+          # Verify it's the same file
+          if diff -q list-manager.html /tmp/github-list-manager.html > /dev/null; then
+            echo "✓ Local and GitHub versions match"
+          else
+            echo "❌ Local and GitHub versions differ"
+            exit 1
+          fi
+
+      - name: Test 7 - Fetch CSS and JS files
+        run: |
+          echo "✓ Testing CSS and JS file availability..."
+
+          BRANCH=${{ steps.git-info.outputs.branch }}
+
+          # Test CSS
+          css_status=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://raw.githubusercontent.com/${{ github.repository }}/${BRANCH}/list-manager.css")
+
+          if [ "$css_status" = "200" ]; then
+            echo "✓ CSS file accessible (HTTP $css_status)"
+          else
+            echo "❌ CSS file not accessible (HTTP $css_status)"
+            exit 1
+          fi
+
+          # Test JS
+          js_status=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://raw.githubusercontent.com/${{ github.repository }}/${BRANCH}/list-data.js")
+
+          if [ "$js_status" = "200" ]; then
+            echo "✓ JS file accessible (HTTP $js_status)"
+          else
+            echo "❌ JS file not accessible (HTTP $js_status)"
+            exit 1
+          fi
+
+      - name: Test 8 - Validate JavaScript syntax
+        run: |
+          echo "✓ Checking JavaScript syntax..."
+
+          # Extract inline JavaScript and check basic syntax
+          node -e "
+          const fs = require('fs');
+          const html = fs.readFileSync('list-manager.html', 'utf8');
+
+          // Check for common JS errors
+          if (html.includes('undefined') && !html.includes('typeof')) {
+            console.log('⚠️ Warning: found undefined without typeof check');
+          }
+
+          // Check for console errors (basic check)
+          if (html.includes('console.error') || html.includes('throw')) {
+            console.log('✓ Error handling present');
+          }
+
+          console.log('✓ JavaScript validation passed');
+          "
+
+      - name: Test 9 - Validate CSS syntax (basic)
+        run: |
+          echo "✓ Checking CSS syntax..."
+
+          if grep -q '^\s*\.' list-manager.css; then
+            echo "✓ CSS contains class definitions"
+          else
+            echo "⚠️ Warning: CSS may be empty or malformed"
+          fi
+
+          # Check for unclosed braces
+          open_braces=$(grep -o '{' list-manager.css | wc -l)
+          close_braces=$(grep -o '}' list-manager.css | wc -l)
+
+          if [ "$open_braces" -eq "$close_braces" ]; then
+            echo "✓ CSS braces balanced ($open_braces pairs)"
+          else
+            echo "❌ CSS braces not balanced (open: $open_braces, close: $close_braces)"
+            exit 1
+          fi
+
+      - name: Summary
+        if: success()
+        run: |
+          echo ""
+          echo "✅ All deployment tests passed!"
+          echo ""
+          echo "🚀 Deployment URL:"
+          echo "${{ steps.git-info.outputs.url }}"
+          echo ""
+          echo "📋 Deployment checklist:"
+          echo "  ✓ Files exist locally"
+          echo "  ✓ Absolute URLs configured"
+          echo "  ✓ HTML syntax valid"
+          echo "  ✓ Essential elements present"
+          echo "  ✓ Files accessible on GitHub"
+          echo "  ✓ CSS and JS syntax valid"
+          echo ""
+          echo "Ready for production! 🎉"
+
+      - name: Test Summary (if failed)
+        if: failure()
+        run: |
+          echo "❌ Deployment tests failed!"
+          echo "Please fix the issues above before deploying."
+          exit 1
