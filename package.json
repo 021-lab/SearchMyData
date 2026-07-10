@@ -1,0 +1,40 @@
+{
+  "name": "searchmydata-list-interface",
+  "version": "1.0.0",
+  "description": "Offline-first list management interface with modular architecture",
+  "main": "list-manager.html",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:ui": "playwright test",
+    "test:all": "jest && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "jest": "^29.7.0"
+  },
+  "keywords": [
+    "list-manager",
+    "offline-first",
+    "sync",
+    "modular"
+  ],
+  "author": "",
+  "license": "MIT",
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/test/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "data-model.js",
+      "event-bus.js",
+      "sync-adapter.js",
+      "storage-manager.js",
+      "list-interface.js"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/test/setup.js"
+    ]
+  }
+}
