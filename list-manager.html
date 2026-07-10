@@ -57,12 +57,52 @@
   </div>
 </div>
 
+<script src="https://raw.githubusercontent.com/021-lab/searchmydata/claude/repo-access-status-a865fx/data-model.js"></script>
+<script src="https://raw.githubusercontent.com/021-lab/searchmydata/claude/repo-access-status-a865fx/event-bus.js"></script>
+<script src="https://raw.githubusercontent.com/021-lab/searchmydata/claude/repo-access-status-a865fx/sync-adapter.js"></script>
+<script src="https://raw.githubusercontent.com/021-lab/searchmydata/claude/repo-access-status-a865fx/storage-manager.js"></script>
+<script src="https://raw.githubusercontent.com/021-lab/searchmydata/claude/repo-access-status-a865fx/list-interface.js"></script>
 <script src="https://raw.githubusercontent.com/021-lab/searchmydata/claude/repo-access-status-a865fx/list-data.js"></script>
 <script>
 'use strict';
 
+// ─── Initialize ListInterface ────────────────────────────────────────────────
+let listInterface = null;
+
+async function initializeApp() {
+  listInterface = new ListInterface({
+    listId: 'shopping-list',
+    initialItems: items,
+    syncAdapter: new OfflineAdapter(),
+    storage: { localFilePath: './list-data.json' }
+  });
+
+  await listInterface.init();
+  render();
+
+  // Subscribe to model changes
+  listInterface.bus.on('addItem', () => render());
+  listInterface.bus.on('editItem', () => render());
+  listInterface.bus.on('changeStatus', () => render());
+  listInterface.bus.on('moveItem', () => render());
+  listInterface.bus.on('addTag', () => render());
+  listInterface.bus.on('removeTag', () => render());
+  listInterface.bus.on('deleteItem', () => render());
+  listInterface.bus.on('syncStart', () => updateSyncStatus('syncing'));
+  listInterface.bus.on('syncSuccess', () => updateSyncStatus('success'));
+  listInterface.bus.on('syncError', () => updateSyncStatus('error'));
+  listInterface.bus.on('actionLogged', (log) => updateActionLog(log));
+}
+
 // ─── Render ──────────────────────────────────────────────────────────────────
 const container = document.getElementById('list-container');
+
+function getLevel(itemId) {
+  const item = listInterface.model.items.find(i => i.id === itemId);
+  if (!item) return 0;
+  if (item.parentId === null) return 0;
+  return 1 + getLevel(item.parentId);
+}
 
 function applyItemIndent(wrapper, level) {
   const el = wrapper.querySelector('.list-item');
@@ -74,22 +114,23 @@ function applyItemIndent(wrapper, level) {
 
 function render() {
   container.innerHTML = '';
-  if (items.length === 0) {
+  const visibleItems = listInterface.getVisibleItems();
+  if (visibleItems.length === 0) {
     container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>Список пуст. Нажмите + чтобы добавить.</p></div>`;
     return;
   }
-  let collapsedAt = Infinity;
-  items.forEach((item, idx) => {
-    const level = item.level || 0;
-    const hidden = level > collapsedAt;
-    if (!hidden) collapsedAt = item.collapsed ? level : Infinity;
 
-    const hasChildren = idx < items.length - 1 && (items[idx + 1].level || 0) > level;
+  let collapsedAt = Infinity;
+  const collapsedItems = new Set();
+
+  visibleItems.forEach((item, idx) => {
+    const level = getLevel(item.id);
+    const isCollapsed = collapsedItems.has(item.id);
+    const hasChildren = visibleItems.some(child => child.parentId === item.id);
 
     const wrapper = document.createElement('div');
     wrapper.className = 'list-item-wrapper';
     wrapper.dataset.id = item.id;
-    if (hidden) wrapper.style.display = 'none';
 
     const actionBg = document.createElement('div');
     actionBg.className = 'action-bg del';
@@ -97,7 +138,8 @@ function render() {
 
     const el = document.createElement('div');
     el.className = 'list-item';
-    const chevron = hasChildren ? `<span class="chevron">${item.collapsed ? '▶' : '▼'}</span>` : '';
+    const statusClass = item.status === 'closed' ? ' closed' : '';
+    const chevron = hasChildren ? `<span class="chevron">${isCollapsed ? '▶' : '▼'}</span>` : '';
     el.innerHTML = `
       <div class="item-line1">${chevron}${escHtml(item.line1)}</div>
       ${item.line2 ? `<div class="item-line2">${escHtml(item.line2)}</div>` : ''}
@@ -117,21 +159,56 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// ─── Sync Status ─────────────────────────────────────────────────────────────
+function updateSyncStatus(status) {
+  const diagStatus = document.getElementById('diag-status');
+  if (!diagStatus) return;
+  if (status === 'syncing') {
+    diagStatus.textContent = '⟳ синхронизация...';
+    diagStatus.classList.add('syncing');
+  } else if (status === 'success') {
+    diagStatus.textContent = '✓ синхронизировано';
+    diagStatus.classList.remove('syncing');
+    diagStatus.classList.add('success');
+    setTimeout(() => diagStatus.classList.remove('success'), 2000);
+  } else if (status === 'error') {
+    diagStatus.textContent = '✗ ошибка синхронизации';
+    diagStatus.classList.remove('syncing');
+    diagStatus.classList.add('error');
+  }
+}
+
+function updateActionLog(log) {
+  const diagLog = document.getElementById('diag-log');
+  if (!diagLog) return;
+  diagLog.innerHTML = log.map((entry, idx) => `
+    <div class="log-entry">
+      <span class="log-time">${new Date(entry.timestamp).toLocaleTimeString()}</span>
+      <span class="log-action">${entry.action}</span>
+      <span class="log-data">${JSON.stringify(entry.data).substring(0, 60)}</span>
+    </div>
+  `).join('');
+}
+
 // ─── Undo ────────────────────────────────────────────────────────────────────
 let undoSnapshot = null;
 const undoBtn = document.getElementById('undo-btn');
 
 undoBtn.addEventListener('click', () => {
   if (!undoSnapshot) return;
-  items = undoSnapshot;
+  listInterface.model.items = undoSnapshot;
   undoSnapshot = null;
+  listInterface.storage.saveState({
+    items: listInterface.model.items,
+    version: listInterface.model.version
+  });
   render();
   undoBtn.disabled = true;
   showToast('Отменено');
 });
 
 function saveUndoSnapshot() {
-  undoSnapshot = items.map(i => ({ ...i }));
+  undoSnapshot = listInterface.model.items.map(i => ({ ...i }));
   undoBtn.disabled = false;
 }
 
@@ -187,15 +264,15 @@ function startDrag(wrapper, clientY, clientX) {
   listItem.style.transition = 'none';
   wrapper.classList.add('is-dragging');
 
-  // Collect group: all items with higher level immediately following parent
+  // Collect group: all child items immediately following parent
   const allWrappers = [...container.querySelectorAll('.list-item-wrapper')];
   const startIdx = allWrappers.indexOf(wrapper);
-  const parentItem = items.find(i => i.id === +wrapper.dataset.id);
-  const baseLevel = parentItem?.level || 0;
+  const parentItem = listInterface.model.findItem(+wrapper.dataset.id);
+  const parentId = parentItem?.id;
   const children = [];
   for (let i = startIdx + 1; i < allWrappers.length; i++) {
-    const childItem = items.find(it => it.id === +allWrappers[i].dataset.id);
-    if ((childItem?.level || 0) <= baseLevel) break;
+    const childItem = listInterface.model.findItem(+allWrappers[i].dataset.id);
+    if (childItem?.parentId !== parentId && childItem?.parentId !== undefined) break;
     children.push(allWrappers[i]);
   }
 
@@ -249,8 +326,8 @@ function updateDraggedLevel() {
   let newLevel = 0;
   if (idx > 0) {
     const aboveId  = +all[idx - 1].dataset.id;
-    const aboveItem = items.find(i => i.id === aboveId);
-    const aboveLevel = aboveItem ? (aboveItem.level || 0) : 0;
+    const aboveItem = listInterface.model.findItem(aboveId);
+    const aboveLevel = getLevel(aboveId);
     newLevel = dragState.rightShifted ? aboveLevel + 1 : aboveLevel;
   }
   dragState.pendingLevel = newLevel;
@@ -398,9 +475,11 @@ function finalizeDrag() {
     const idx = all.indexOf(wrapper);
     const groupEnd = idx + children.length;
     if (idx > 0 && groupEnd < all.length - 1) {
-      const aboveItem = items.find(i => i.id === +all[idx - 1].dataset.id);
-      const belowItem = items.find(i => i.id === +all[groupEnd + 1].dataset.id);
-      if ((belowItem?.level || 0) > (aboveItem?.level || 0)) {
+      const aboveItem = listInterface.model.findItem(+all[idx - 1].dataset.id);
+      const belowItem = listInterface.model.findItem(+all[groupEnd + 1].dataset.id);
+      const aboveLevel = getLevel(aboveItem?.id);
+      const belowLevel = getLevel(belowItem?.id);
+      if (belowLevel > aboveLevel) {
         const aboveWrapper = all[idx - 1];
         container.insertBefore(wrapper, aboveWrapper);
         for (const child of children) container.insertBefore(child, aboveWrapper);
@@ -408,22 +487,13 @@ function finalizeDrag() {
     }
   }
 
-  // Commit the pending nesting level to the parent, propagate delta to children.
-  if (pendingLevel !== undefined) {
+  // Commit the pending nesting level to the parent
+  if (pendingLevel !== undefined && pendingLevel > 0) {
     const itemId = +wrapper.dataset.id;
-    const parentItem = items.find(i => i.id === itemId);
-    if (parentItem) {
-      const delta = pendingLevel - (parentItem.level || 0);
-      parentItem.level = pendingLevel;
-      applyItemIndent(wrapper, pendingLevel);
-      // Apply the same delta to every child so relative indents are preserved
-      for (const child of children) {
-        const childItem = items.find(i => i.id === +child.dataset.id);
-        if (childItem) {
-          childItem.level = Math.max(0, (childItem.level || 0) + delta);
-          applyItemIndent(child, childItem.level);
-        }
-      }
+    const parentItem = listInterface.model.findItem(itemId);
+    const itemAbove = listInterface.model.findItem(+[...container.querySelectorAll('.list-item-wrapper')][0]?.dataset.id);
+    if (parentItem && itemAbove) {
+      listInterface.onUserAction('moveItem', { itemId, newParentId: itemAbove.id });
     }
   }
 
@@ -440,7 +510,13 @@ function finalizeDrag() {
     wrapper.style.transition = '';
     wrapper.classList.remove('is-dragging');
     const wrappers = [...container.querySelectorAll('.list-item-wrapper')];
-    items = wrappers.map(w => items.find(it => it.id === +w.dataset.id)).filter(Boolean);
+    const reorderedIds = wrappers.map(w => +w.dataset.id).filter(id => id);
+    const reordered = reorderedIds.map(id => listInterface.model.findItem(id)).filter(Boolean);
+    listInterface.model.items = reordered;
+    listInterface.storage.saveState({
+      items: listInterface.model.items,
+      version: listInterface.model.version
+    });
     render();
   }, 220);
 }
@@ -517,13 +593,16 @@ function execDrop(action, itemId, wrapper) {
 
 function execTag(tag, itemId) {
   if (!tag) return;
-  const item = items.find(i => i.id === itemId);
+  const item = listInterface.model.findItem(itemId);
   if (!item) return;
-  if (!item.tags) item.tags = [];
-  const idx = item.tags.indexOf(tag);
-  if (idx >= 0) { item.tags.splice(idx, 1); showToast(`«${tag}» убран`); }
-  else          { item.tags.push(tag);       showToast(`«${tag}» добавлен`); }
-  render();
+  const idx = item.tags?.indexOf(tag) || -1;
+  if (idx >= 0) {
+    listInterface.onUserAction('removeTag', { itemId, tag });
+    showToast(`«${tag}» убран`);
+  } else {
+    listInterface.onUserAction('addTag', { itemId, tag });
+    showToast(`«${tag}» добавлен`);
+  }
 }
 
 // ─── Swipe gesture ───────────────────────────────────────────────────────────
@@ -681,8 +760,7 @@ function doDelete(itemId, wrapper) {
     wrapper.style.marginBottom = '0';
   });
   setTimeout(() => {
-    items = items.filter(i => i.id !== itemId);
-    render();
+    listInterface.onUserAction('deleteItem', { itemId });
     showToast('Элемент удалён');
   }, 310);
 }
@@ -743,7 +821,7 @@ function openModal(mode, targetId) {
   input1.style.borderColor   = '';
 
   if (mode === 'view') {
-    const item = items.find(i => i.id === targetId);
+    const item = listInterface.model.findItem(targetId);
     viewLine1.textContent      = item?.line1 || '';
     viewLine2.textContent      = item?.line2 || '';
     viewLine2.style.display    = item?.line2 ? '' : 'none';
@@ -756,7 +834,7 @@ function openModal(mode, targetId) {
     btnCancel.textContent      = 'Закрыть';
     modalTitle.textContent     = 'Просмотр';
   } else if (mode === 'edit') {
-    const item = items.find(i => i.id === targetId);
+    const item = listInterface.model.findItem(targetId);
     input1.value = item ? item.line1 : '';
     input2.value = item?.line2 || '';
     modalTitle.textContent = 'Редактировать';
@@ -794,23 +872,15 @@ function confirmModal() {
   const l2 = input2.value.trim();
 
   if (modalMode === 'edit') {
-    const item = items.find(i => i.id === modalTargetId);
-    if (item) { item.line1 = l1; item.line2 = l2 || undefined; }
-    render();
+    listInterface.onUserAction('editItem', { itemId: modalTargetId, updates: { line1: l1, line2: l2 || '' } });
     closeModal();
     showToast('Сохранено');
   } else if (modalMode === 'nest') {
-    const pIdx = items.findIndex(i => i.id === modalTargetId);
-    const pLevel = pIdx >= 0 ? (items[pIdx].level || 0) : 0;
-    let ins = pIdx + 1;
-    while (ins < items.length && (items[ins].level || 0) > pLevel) ins++;
-    items.splice(ins, 0, { id: nextId++, line1: l1, line2: l2 || undefined, level: pLevel + 1 });
-    render();
+    listInterface.onUserAction('addItem', { data: { line1: l1, line2: l2 || '' }, parentId: modalTargetId });
     closeModal();
     showToast('Добавлен вложенный');
   } else {
-    items.push({ id: nextId++, line1: l1, line2: l2 || undefined });
-    render();
+    listInterface.onUserAction('addItem', { data: { line1: l1, line2: l2 || '' }, parentId: null });
     closeModal();
     showToast('Элемент добавлен');
   }
@@ -985,7 +1055,7 @@ function pttReset() {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-render();
+initializeApp();
 </script>
 </body>
 </html>
