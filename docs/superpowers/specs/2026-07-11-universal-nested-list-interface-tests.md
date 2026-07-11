@@ -11,13 +11,13 @@ The application must always have a working GitHub htmlpreview deployment. CI mus
 Every pushed version on the working branch must be reachable through GitHub htmlpreview:
 
 ```text
-https://htmlpreview.github.io/?https://raw.githubusercontent.com/<owner>/<repo>/<branch>/list-manager.html#v=<version-hash>
+https://htmlpreview.github.io/?https://raw.githubusercontent.com/<owner>/<repo>/<commit-sha>/list-manager.html#v=<version-hash>
 ```
 
 Example:
 
 ```text
-https://htmlpreview.github.io/?https://raw.githubusercontent.com/021-lab/SearchMyData/codex-list-interface/list-manager.html#v=mrfxmgv6-cbwbiy
+https://htmlpreview.github.io/?https://raw.githubusercontent.com/021-lab/SearchMyData/<commit-sha>/list-manager.html#v=mrfxmgv6-cbwbiy
 ```
 
 For this branch the entrypoint is:
@@ -26,36 +26,30 @@ For this branch the entrypoint is:
 list-manager.html
 ```
 
-The preview URL must be generated from the current branch and current version hash during CI and local handoff.
+The preview URL must be generated from the pushed commit SHA and the committed preview build hash during CI and local handoff.
 
 ## Cache-Busting Asset Rule
 
 Each deployable version must use a random hash to prevent GitHub/htmlpreview/browser cache from serving stale components.
 
-The hash must be applied to component file references, not only to the outer htmlpreview URL.
+For the permanent preview deployment, the page is shipped as a self-contained `list-manager.html` file with inline CSS and inline bundled JavaScript. The committed HTML must embed the build hash and the preview URL must also include that hash.
 
 Example:
 
 ```html
-<link rel="stylesheet" href="list-manager.css?v=r8k3p2">
-<script type="module" src="list-app.js?v=r8k3p2"></script>
-<script type="module" src="list-renderer.js?v=r8k3p2"></script>
+<meta name="preview-build-hash" content="r8k3p2">
+<script>window.__LIST_MANAGER_BUILD_HASH__ = "r8k3p2";</script>
 ```
 
 Requirements:
 
 - The version hash is generated per pushed/deployed version.
-- The same hash is used for all component references belonging to that version.
-- CI tests the exact htmlpreview URL that includes that hash.
-- A stale component file must not be able to pass CI because the page accidentally loaded it from cache.
+- The committed `list-manager.html` includes that hash in deployable markup.
+- CI regenerates `list-manager.html` from sources and fails if the committed HTML is stale.
+- CI tests the exact htmlpreview URL that includes that hash and points to the exact pushed commit.
+- A stale branch-level raw cache must not be able to pass CI, which is why CI uses a commit-specific raw URL instead of a branch URL.
 
-If the project later switches to hashed filenames instead of query parameters, the same rule applies:
-
-```text
-list-app.r8k3p2.js
-list-renderer.r8k3p2.js
-list-manager.r8k3p2.css
-```
+Source modules and CSS can still exist in the repo, but the deployed htmlpreview page must not depend on raw GitHub serving JavaScript modules or CSS with correct MIME types.
 
 ## CI Contract
 
@@ -64,18 +58,19 @@ CI runs Playwright against the deployed htmlpreview page.
 Required CI steps:
 
 1. Checkout the branch under test.
-2. Generate or read the version hash for this build.
-3. Ensure the HTML references component assets with that hash.
-4. Build the htmlpreview URL for `list-manager.html`.
-5. Verify raw GitHub returns `HTTP 200` for the HTML and all hashed component assets.
-6. Run Playwright against the htmlpreview URL.
-7. Upload Playwright traces/screenshots on failure.
+2. Regenerate `list-manager.html` from the source template, CSS, and JS modules.
+3. Fail if the regenerated `list-manager.html` differs from the committed file.
+4. Read the committed preview build hash.
+5. Build the htmlpreview URL for `list-manager.html` using the exact pushed commit SHA.
+6. Verify raw GitHub returns `HTTP 200` for that committed HTML.
+7. Run Playwright against the htmlpreview URL.
+8. Upload Playwright traces/screenshots on failure.
 
 The test must fail if:
 
 - htmlpreview URL does not load;
-- any component asset returns non-200;
-- the page loads stale assets;
+- the committed preview HTML is stale relative to source files;
+- the page loads stale preview HTML from a branch cache instead of the exact pushed commit;
 - rendered page assertions fail after a user action.
 
 ## Playwright UAT Scenarios

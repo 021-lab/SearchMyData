@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="preview-build-hash" content="__PREVIEW_BUILD_HASH__">
+<title>Список</title>
+<style>
+__INLINE_CSS__
+</style>
+</head>
+<body>
+<div id="app-root" data-view-mode="list">
+  <header>
+    <button id="undo-btn" disabled title="Отменить последнее перетаскивание">↩</button>
+    <h1>Мой список</h1>
+    <button id="view-toggle-btn" title="Переключить вид">Журнал</button>
+  </header>
+
+  <div id="list-container"></div>
+
+  <section id="action-log-panel" hidden>
+    <div class="action-log-header">
+      <h2>Журнал действий</h2>
+    </div>
+    <div id="action-log-list"></div>
+  </section>
+
+  <div class="toast" id="toast"></div>
+  <button class="add-btn" id="add-btn" aria-label="Добавить задачу">+</button>
+
+  <div id="tag-panel"></div>
+
+  <div id="drop-zone-panel">
+    <div class="panel-item" data-action="nest" style="background:#34c759"><span class="panel-icon">➕</span><span class="panel-label">Вложенный</span></div>
+    <div class="panel-item" data-action="view" style="background:#5ac8fa"><span class="panel-icon">👁</span><span class="panel-label">Просмотр</span></div>
+    <div class="panel-item" data-action="edit" style="background:#007aff"><span class="panel-icon">✏️</span><span class="panel-label">Изменить</span></div>
+    <div class="panel-item" data-action="delete" style="background:#ff3b30"><span class="panel-icon">🗑</span><span class="panel-label">Удалить</span></div>
+    <div class="panel-item" data-action="Open" style="background:#007aff"><span class="panel-icon">◯</span><span class="panel-label">Open</span></div>
+    <div class="panel-item" data-action="Done" style="background:#34c759"><span class="panel-icon">✓</span><span class="panel-label">Done</span></div>
+    <div class="panel-item" data-action="Focus" style="background:#ff9500"><span class="panel-icon">◎</span><span class="panel-label">Focus</span></div>
+    <div class="panel-item" data-action="Archive" style="background:#8e8e93"><span class="panel-icon">▣</span><span class="panel-label">Archive</span></div>
+    <div class="panel-item" data-action="Pause" style="background:#5856d6"><span class="panel-icon">Ⅱ</span><span class="panel-label">Pause</span></div>
+  </div>
+
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <h2 id="modal-title">Новый элемент</h2>
+      <div id="modal-view-content" style="display:none; margin-bottom:12px;">
+        <div id="view-line1" style="font-size:17px; font-weight:600; color:#1a1a2e; margin-bottom:5px;"></div>
+        <div id="view-line2" style="font-size:14px; color:#888; margin-bottom:8px;"></div>
+        <div id="view-tags" class="item-tags"></div>
+      </div>
+      <input type="text" id="input-line1" placeholder="Название (обязательно)" maxlength="60">
+      <input type="text" id="input-line2" placeholder="Подпись (необязательно)" maxlength="80">
+      <div class="modal-actions">
+        <button class="btn btn-cancel" id="btn-cancel">Отмена</button>
+        <button class="btn btn-add" id="btn-confirm">Добавить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+window.__LIST_MANAGER_BUILD_HASH__ = "__PREVIEW_BUILD_HASH__";
+</script>
+<script>
+__INLINE_JS__
+</script>
+</body>
+</html>
