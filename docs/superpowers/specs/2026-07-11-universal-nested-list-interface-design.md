@@ -252,7 +252,7 @@ The renderer receives current app state and renders:
 - the action-log tab/panel;
 - active DOM attributes such as `data-act-id`, `data-act-type`, and `data-command`.
 
-Rendering may fully rebuild the list after every state patch in the first version.
+Rendering keeps the current full-render strategy after every state patch in the first version.
 
 The renderer is responsible for deriving hierarchy for display only. It does not own business mutation logic.
 
@@ -309,63 +309,9 @@ Each log entry should show:
 
 The log is part of the app document and is saved with the snapshot.
 
-## Cross-Module Test With Mock UI
+## Testing
 
-The critical end-to-end test replaces the real UI module with a mock UI and verifies all non-UI modules together.
-
-Purpose: prove that the interpreter, store, renderer boundary, sync module, and backend adapter work without depending on touch events or DOM gesture code.
-
-Test setup:
-
-1. Start with an empty localStorage test namespace.
-2. Use the demo seed adapter to initialize state.
-3. Replace `list-ui.js` with a mock emitter that calls `dispatchUserInput` directly.
-4. Use a mock backend adapter with in-memory `load()` and `save(state)` methods.
-5. Use a renderer spy that records the state it was asked to render.
-
-Test flow:
-
-```js
-mockUi.emit({
-  actId: "list",
-  actType: "list",
-  command: "addItem",
-  payload: { line1: "Mock task", line2: "Created by test" },
-  source: "mock-ui"
-});
-
-mockUi.emit({
-  actId: newlyCreatedTaskId,
-  actType: "task",
-  command: "setStatus",
-  payload: { status: "Focus" },
-  source: "mock-ui"
-});
-
-mockUi.emit({
-  actId: newlyCreatedTaskId,
-  actType: "task",
-  command: "addChild",
-  payload: { line1: "Child task" },
-  source: "mock-ui"
-});
-```
-
-Expected assertions:
-
-- store state contains a flat `snapshot.items` array;
-- newly created ids are 5 characters long;
-- new items default to `Open` unless a command changes status;
-- `setStatus` updates the task to `Focus`;
-- child task has `parentId` equal to the parent task id;
-- sibling order is represented by `order`;
-- every command creates a JSON Patch entry;
-- every command appends an action-log entry;
-- renderer is called after each applied command with updated state;
-- sync adapter `save(state)` receives the same app document shape `{ snapshot, actionLog }`;
-- no test step imports or calls the real UI gesture handlers.
-
-This test proves that the backend-ready application core works when the real UI is swapped out. Separate browser/UAT checks still verify that the preserved touch and drag UI dispatches the same commands.
+The cross-module test plan lives in `2026-07-11-universal-nested-list-interface-tests.md`.
 
 ## Acceptance Criteria
 
@@ -384,4 +330,3 @@ This test proves that the backend-ready application core works when the real UI 
 - Store persists `{ snapshot, actionLog }`.
 - Sync is local-first and uses `adapter.load()` / `adapter.save(state)`.
 - Cross-module mock UI test passes for the non-UI application core.
-
