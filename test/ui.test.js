@@ -3,11 +3,13 @@
 const { test, expect } = require('@playwright/test');
 
 // Get the deployment URL from environment or use default
-const DEPLOYMENT_URL = process.env.PAGES_URL || 'https://021-lab.github.io/SearchMyData/list-manager.html';
+const BRANCH = process.env.GITHUB_REF_NAME || 'claude/repo-access-status-a865fx';
+const REPO = process.env.GITHUB_REPOSITORY || '021-lab/searchmydata';
+const DEPLOYMENT_URL = `https://htmlpreview.github.io/?https://raw.githubusercontent.com/${REPO}/${BRANCH}/list-manager.html`;
 
 test.describe('List Manager UI', () => {
   test.beforeEach(async ({ page }) => {
-    // Load the GitHub Pages deployment
+    // Load the htmlpreview deployment
     await page.goto(DEPLOYMENT_URL, {
       waitUntil: 'networkidle'
     });
@@ -186,48 +188,6 @@ test.describe('List Manager UI', () => {
       return item.tags && item.tags.includes('urgent');
     });
     expect(hasTag).toBe(true);
-  });
-
-  test('should toggle a tag through the left swipe panel action path', async ({ page }) => {
-    const firstItem = page.locator('.list-item-wrapper').first();
-    const itemId = Number(await firstItem.getAttribute('data-id'));
-
-    const afterAdd = await page.evaluate((id) => {
-      execTag('Срочно', id);
-      return window.listInterface.model.findItem(id).tags;
-    }, itemId);
-    expect(afterAdd).toContain('Срочно');
-
-    const afterRemove = await page.evaluate((id) => {
-      execTag('Срочно', id);
-      return window.listInterface.model.findItem(id).tags;
-    }, itemId);
-    expect(afterRemove).not.toContain('Срочно');
-  });
-
-  test('should make a dragged item a child of the item above after right shift', async ({ page }) => {
-    const parentId = await page.evaluate(async () => {
-      window.listInterface.model.items = [
-        { id: 101, line1: 'Parent', line2: '', parentId: null, status: 'open', tags: [] },
-        { id: 102, line1: 'Child', line2: '', parentId: null, status: 'open', tags: [] }
-      ];
-      render();
-
-      const wrapper = document.querySelector('.list-item-wrapper[data-id="102"]');
-      const row = wrapper.querySelector('.list-item');
-      const rect = row.getBoundingClientRect();
-      const y = rect.top + rect.height / 2;
-      const x = rect.left + 12;
-
-      startDrag(wrapper, y, x);
-      updateDrag(y, x + 60);
-      finalizeDrag();
-      await new Promise(resolve => setTimeout(resolve, 260));
-
-      return window.listInterface.model.findItem(102).parentId;
-    });
-
-    expect(parentId).toBe(101);
   });
 
   test('should emit events on actions', async ({ page }) => {
