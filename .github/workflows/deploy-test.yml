@@ -295,6 +295,20 @@ jobs:
         run: |
           echo "url=https://021-lab.github.io/SearchMyData/list-manager.html" >> $GITHUB_OUTPUT
 
+      - name: Wait for GitHub Pages update
+        run: |
+          for attempt in {1..30}; do
+            html=$(curl -fsSL "${{ steps.deployment.outputs.url }}?v=${GITHUB_SHA}-${attempt}" || true)
+            if printf '%s' "$html" | grep -q 'window.listInterface = listInterface;'; then
+              echo "GitHub Pages is serving the updated app."
+              exit 0
+            fi
+            echo "Waiting for GitHub Pages update (${attempt}/30)..."
+            sleep 10
+          done
+          echo "GitHub Pages did not serve the updated app in time."
+          exit 1
+
       - name: Run Integration & UI tests
         run: npx playwright test
         timeout-minutes: 15
