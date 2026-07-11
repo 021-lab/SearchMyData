@@ -1,39 +1,20 @@
 'use strict';
 
-let items = [
-  { id:  1, line1: 'Молоко 3.2%',        line2: '2 пакета, магазин у дома' },
-  { id:  2, line1: 'Хлеб ржаной',        children: [
-    { id: 26, line1: 'Бородинский',  line2: '400 г' },
-    { id: 27, line1: 'Столичный',    line2: '500 г' },
-  ]},
-  { id:  3, line1: 'Яблоки',             line2: 'Голден, ~1.5 кг', children: [
-    { id: 28, line1: 'Голден',       line2: '500 г' },
-    { id: 29, line1: 'Гренни Смит',  line2: '400 г' },
-    { id: 30, line1: 'Фуджи',        line2: '300 г' },
-    { id: 31, line1: 'Симиренко',    line2: '300 г' },
-  ]},
-  { id:  4, line1: 'Кофе',               line2: 'Арабика, зерно, 250 г' },
-  { id:  5, line1: 'Зубная паста' },
-  { id:  6, line1: 'Шампунь',            line2: 'Для нормальных волос' },
-  { id:  7, line1: 'Стиральный порошок', line2: 'Автомат, 3 кг' },
-  { id:  8, line1: 'Батарейки AA',       line2: '4 штуки' },
-  { id:  9, line1: 'Сыр Гауда',          line2: '200 г, нарезка' },
-  { id: 10, line1: 'Яйца',               line2: '10 штук, C1' },
-  { id: 11, line1: 'Масло сливочное',    line2: '82.5%, 200 г' },
-  { id: 12, line1: 'Греческий йогурт',   line2: '0%, 500 г' },
-  { id: 13, line1: 'Помидоры',           line2: '1 кг, черри' },
-  { id: 14, line1: 'Огурцы',             line2: '500 г' },
-  { id: 15, line1: 'Куриное филе',       line2: '1 кг, охлаждённое' },
-  { id: 16, line1: 'Макароны',           line2: 'Спагетти, 400 г' },
-  { id: 17, line1: 'Томатная паста',     line2: '2 банки по 140 г' },
-  { id: 18, line1: 'Оливковое масло',    line2: 'Extra Virgin, 500 мл' },
-  { id: 19, line1: 'Чай зелёный',        line2: '25 пакетиков' },
-  { id: 20, line1: 'Бананы',             line2: '1 кг' },
-  { id: 21, line1: 'Апельсины',          line2: '1.5 кг' },
-  { id: 22, line1: 'Туалетная бумага',   line2: '12 рулонов' },
-  { id: 23, line1: 'Мыло жидкое',        line2: 'Антибактериальное, 500 мл' },
-  { id: 24, line1: 'Сахар',              line2: '1 кг, белый' },
-  { id: 25, line1: 'Соль',               line2: 'Морская, мелкая, 500 г' },
-];
-
-let nextId = 32;
+export const seedState = {
+  snapshot: {
+    items: [
+      { id: 'milk1', parentId: null, order: 10, status: 'Open', line1: 'Молоко 3.2%', line2: '2 пакета, магазин у дома', collapsed: false, tags: [] },
+      { id: 'bread', parentId: null, order: 20, status: 'Open', line1: 'Хлеб ржаной', line2: '', collapsed: false, tags: [] },
+      { id: 'borod', parentId: 'bread', order: 10, status: 'Open', line1: 'Бородинский', line2: '400 г', collapsed: false, tags: [] },
+      { id: 'stoli', parentId: 'bread', order: 20, status: 'Open', line1: 'Столичный', line2: '500 г', collapsed: false, tags: [] },
+      { id: 'apple', parentId: null, order: 30, status: 'Focus', line1: 'Яблоки', line2: 'Голден, ~1.5 кг', collapsed: false, tags: ['Купить'] },
+      { id: 'goldn', parentId: 'apple', order: 10, status: 'Open', line1: 'Голден', line2: '500 г', collapsed: false, tags: [] },
+      { id: 'grnsm', parentId: 'apple', order: 20, status: 'Open', line1: 'Гренни Смит', line2: '400 г', collapsed: false, tags: [] },
+      { id: 'fudji', parentId: 'apple', order: 30, status: 'Pause', line1: 'Фуджи', line2: '300 г', collapsed: false, tags: [] },
+      { id: 'cofee', parentId: null, order: 40, status: 'Open', line1: 'Кофе', line2: 'Арабика, зерно, 250 г', collapsed: false, tags: [] },
+      { id: 'tooth', parentId: null, order: 50, status: 'Done', line1: 'Зубная паста', line2: '', collapsed: false, tags: ['Дом'] },
+      { id: 'shamp', parentId: null, order: 60, status: 'Archive', line1: 'Шампунь', line2: 'Для нормальных волос', collapsed: false, tags: [] }
+    ]
+  },
+  actionLog: []
+};

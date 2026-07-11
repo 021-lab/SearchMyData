@@ -1,0 +1,68 @@
+name: Deploy Test
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  test-htmlpreview-deployment:
+    name: Test htmlpreview Deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compute preview hash
+        id: preview
+        run: |
+          HASH=$(node scripts/prepare-preview.mjs)
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "preview_url=https://htmlpreview.github.io/?https://raw.githubusercontent.com/021-lab/SearchMyData/${GITHUB_REF_NAME}/list-manager.html?v=$HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Verify raw assets
+        run: |
+          HASH='${{ steps.preview.outputs.hash }}'
+          for path in \
+            "list-manager.html?v=$HASH" \
+            "list-manager.css?v=$HASH" \
+            "list-data.js?v=$HASH" \
+            "src/list-app.js?v=$HASH" \
+            "src/list-ui.js?v=$HASH" \
+            "src/list-renderer.js?v=$HASH" \
+            "src/list-store.js?v=$HASH" \
+            "src/list-interpreter.js?v=$HASH" \
+            "src/list-sync.js?v=$HASH" \
+            "src/list-backend-adapter.js?v=$HASH"
+          do
+            URL="https://raw.githubusercontent.com/021-lab/SearchMyData/${GITHUB_REF_NAME}/$path"
+            CODE=$(curl -L -s -o /dev/null -w '%{http_code}' "$URL")
+            echo "$CODE $URL"
+            test "$CODE" = "200"
+          done
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright against htmlpreview
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ steps.preview.outputs.preview_url }}
+        run: npx playwright test
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report
+            test-results

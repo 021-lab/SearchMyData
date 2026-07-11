@@ -329,4 +329,4 @@ The cross-module test plan lives in `2026-07-11-universal-nested-list-interface-
 - Interpreter returns JSON Patch and action-log entries.
 - Store persists `{ snapshot, actionLog }`.
 - Sync is local-first and uses `adapter.load()` / `adapter.save(state)`.
-- Cross-module mock UI test passes for the non-UI application core.
+- Deployed Playwright preview test passes for create task, create subtask, and status changes.

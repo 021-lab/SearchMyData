@@ -4,1009 +4,154 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Список</title>
-<link rel="stylesheet" href="list-manager.css">
+<script>
+  const previewVersion = new URL(window.location.href).searchParams.get('v') || 'dev';
+  const cssLink = document.createElement('link');
+  cssLink.rel = 'stylesheet';
+  cssLink.href = `./list-manager.css?v=${encodeURIComponent(previewVersion)}`;
+  document.head.appendChild(cssLink);
+</script>
 </head>
 <body>
+<div id="app-root" data-view-mode="list">
+  <header>
+    <button id="undo-btn" disabled title="Отменить последнее перетаскивание">↩</button>
+    <h1>Мой список</h1>
+    <button id="view-toggle-btn" title="Переключить вид">Журнал</button>
+  </header>
 
-<header>
-  <button id="undo-btn" disabled title="Отменить перетаскивание">↩</button>
-  <h1>Мой список</h1>
-  <button id="ptt-btn" title="Удержи для записи голоса">🎤<span id="ptt-label">Голос</span></button>
-</header>
+  <div id="list-container"></div>
 
-<div id="list-container"></div>
-<div class="toast" id="toast"></div>
-<button class="add-btn" id="add-btn">+</button>
-
-<div id="diag-panel">
-  <div id="diag-header">
-    <span id="diag-title">Диагностика PTT</span>
-    <span id="diag-status" class="diag-info">— ожидание —</span>
-    <span id="diag-toggle">▲</span>
-  </div>
-  <div id="diag-log-header">
-    <span id="diag-log-label">Лог</span>
-    <button class="diag-btn" id="diag-copy-btn">Копировать лог</button>
-  </div>
-  <div id="diag-log"></div>
-</div>
-
-<div id="tag-panel"></div>
-
-<div id="drop-zone-panel">
-  <div class="panel-item" data-action="nest"   style="background:#34c759"><span class="panel-icon">➕</span><span class="panel-label">Вложенный</span></div>
-  <div class="panel-item" data-action="view"   style="background:#5ac8fa"><span class="panel-icon">👁</span><span class="panel-label">Просмотр</span></div>
-  <div class="panel-item" data-action="edit"   style="background:#007aff"><span class="panel-icon">✏️</span><span class="panel-label">Изменить</span></div>
-  <div class="panel-item" data-action="delete" style="background:#ff3b30"><span class="panel-icon">🗑</span><span class="panel-label">Удалить</span></div>
-</div>
-
-<div class="modal-overlay" id="modal-overlay">
-  <div class="modal">
-    <h2 id="modal-title">Новый элемент</h2>
-    <div id="modal-view-content" style="display:none; margin-bottom:12px;">
-      <div id="view-line1" style="font-size:17px; font-weight:600; color:#1a1a2e; margin-bottom:5px;"></div>
-      <div id="view-line2" style="font-size:14px; color:#888; margin-bottom:8px;"></div>
-      <div id="view-tags" class="item-tags"></div>
+  <section id="action-log-panel" hidden>
+    <div class="action-log-header">
+      <h2>Журнал действий</h2>
     </div>
-    <input type="text" id="input-line1" placeholder="Название (обязательно)" maxlength="60">
-    <input type="text" id="input-line2" placeholder="Подпись (необязательно)" maxlength="80">
-    <div class="modal-actions">
-      <button class="btn btn-cancel" id="btn-cancel">Отмена</button>
-      <button class="btn btn-add" id="btn-confirm">Добавить</button>
+    <div id="action-log-list"></div>
+  </section>
+
+  <div class="toast" id="toast"></div>
+  <button class="add-btn" id="add-btn" aria-label="Добавить задачу">+</button>
+
+  <div id="tag-panel"></div>
+
+  <div id="drop-zone-panel">
+    <div class="panel-item" data-action="nest" style="background:#34c759"><span class="panel-icon">➕</span><span class="panel-label">Вложенный</span></div>
+    <div class="panel-item" data-action="view" style="background:#5ac8fa"><span class="panel-icon">👁</span><span class="panel-label">Просмотр</span></div>
+    <div class="panel-item" data-action="edit" style="background:#007aff"><span class="panel-icon">✏️</span><span class="panel-label">Изменить</span></div>
+    <div class="panel-item" data-action="delete" style="background:#ff3b30"><span class="panel-icon">🗑</span><span class="panel-label">Удалить</span></div>
+    <div class="panel-item" data-action="Open" style="background:#007aff"><span class="panel-icon">◯</span><span class="panel-label">Open</span></div>
+    <div class="panel-item" data-action="Done" style="background:#34c759"><span class="panel-icon">✓</span><span class="panel-label">Done</span></div>
+    <div class="panel-item" data-action="Focus" style="background:#ff9500"><span class="panel-icon">◎</span><span class="panel-label">Focus</span></div>
+    <div class="panel-item" data-action="Archive" style="background:#8e8e93"><span class="panel-icon">▣</span><span class="panel-label">Archive</span></div>
+    <div class="panel-item" data-action="Pause" style="background:#5856d6"><span class="panel-icon">Ⅱ</span><span class="panel-label">Pause</span></div>
+  </div>
+
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <h2 id="modal-title">Новый элемент</h2>
+      <div id="modal-view-content" style="display:none; margin-bottom:12px;">
+        <div id="view-line1" style="font-size:17px; font-weight:600; color:#1a1a2e; margin-bottom:5px;"></div>
+        <div id="view-line2" style="font-size:14px; color:#888; margin-bottom:8px;"></div>
+        <div id="view-tags" class="item-tags"></div>
+      </div>
+      <input type="text" id="input-line1" placeholder="Название (обязательно)" maxlength="60">
+      <input type="text" id="input-line2" placeholder="Подпись (необязательно)" maxlength="80">
+      <div class="modal-actions">
+        <button class="btn btn-cancel" id="btn-cancel">Отмена</button>
+        <button class="btn btn-add" id="btn-confirm">Добавить</button>
+      </div>
     </div>
   </div>
 </div>
 
-<script src="list-data.js"></script>
-<script>
-'use strict';
-
-// ─── Tree helpers ─────────────────────────────────────────────────────────────
-function findItem(id, tree = items) {
-  for (const item of tree) {
-    if (item.id === id) return item;
-    if (item.children?.length) {
-      const found = findItem(id, item.children);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-function removeFromTree(id, tree = items) {
-  for (let i = 0; i < tree.length; i++) {
-    if (tree[i].id === id) return tree.splice(i, 1)[0];
-    if (tree[i].children?.length) {
-      const found = removeFromTree(id, tree[i].children);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-// Rebuild nested tree from flat DOM-ordered list [{id, level}].
-// Collects current node data from items, then re-parents by level.
-function buildTree(flatList) {
-  const nodeMap = new Map();
-  function collect(tree) {
-    for (const item of tree) {
-      nodeMap.set(item.id, item);
-      if (item.children?.length) collect(item.children);
-    }
-  }
-  collect(items);
-
-  const root = [];
-  const stack = [{ node: { children: root }, level: -1 }];
-  for (const { id, level } of flatList) {
-    const src = nodeMap.get(id);
-    if (!src) continue;
-    const node = { ...src, children: [] };
-    while (stack.length > 1 && stack[stack.length - 1].level >= level) stack.pop();
-    stack[stack.length - 1].node.children.push(node);
-    stack.push({ node, level });
-  }
-  return root;
-}
-
-// ─── Render ──────────────────────────────────────────────────────────────────
-const container = document.getElementById('list-container');
-
-function applyItemIndent(wrapper, level) {
-  wrapper.style.marginLeft = (level * 24) + 'px';
-  wrapper.dataset.level = level;
-}
-
-function render() {
-  container.innerHTML = '';
-  if (items.length === 0) {
-    container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>Список пуст. Нажмите + чтобы добавить.</p></div>`;
-    return;
-  }
-  let visIdx = 0;
-
-  function renderNode(node, level, isHidden) {
-    visIdx++;
-    const idx = visIdx;
-    const hasChildren = node.children?.length > 0;
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'list-item-wrapper';
-    wrapper.dataset.id = node.id;
-    wrapper.dataset.level = level;
-    if (isHidden) wrapper.style.display = 'none';
-
-    const actionBg = document.createElement('div');
-    actionBg.className = 'action-bg del';
-    actionBg.innerHTML = `<span class="action-icon">🗑</span><span class="action-label">Удалить</span>`;
-
-    const el = document.createElement('div');
-    el.className = 'list-item';
-    const chevron = hasChildren ? `<span class="chevron">${node.collapsed ? '▶' : '▼'}</span>` : '';
-    el.innerHTML = `
-      <div class="item-line1">${chevron}${escHtml(node.line1)}</div>
-      ${node.line2 ? `<div class="item-line2">${escHtml(node.line2)}</div>` : ''}
-      ${node.tags?.length ? `<div class="item-tags">${node.tags.map(t => `<span class="item-tag">${escHtml(t)}</span>`).join('')}</div>` : ''}
-      <div class="item-index">${idx}</div>
-    `;
-
-    wrapper.appendChild(actionBg);
-    wrapper.appendChild(el);
-    container.appendChild(wrapper);
-    applyItemIndent(wrapper, level);
-    bindGesture(el, actionBg, node.id, wrapper);
-
-    if (node.children?.length) {
-      const childHidden = isHidden || !!node.collapsed;
-      for (const child of node.children) {
-        renderNode(child, level + 1, childHidden);
-      }
-    }
-  }
-
-  for (const item of items) renderNode(item, 0, false);
-}
-
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-// ─── Undo ────────────────────────────────────────────────────────────────────
-let undoSnapshot = null;
-const undoBtn = document.getElementById('undo-btn');
-
-undoBtn.addEventListener('click', () => {
-  if (!undoSnapshot) return;
-  items = undoSnapshot;
-  undoSnapshot = null;
-  render();
-  undoBtn.disabled = true;
-  showToast('Отменено');
-});
-
-function saveUndoSnapshot() {
-  undoSnapshot = JSON.parse(JSON.stringify(items));
-  undoBtn.disabled = false;
-}
-
-function toggleCollapse(itemId) {
-  const item = findItem(itemId);
-  if (!item || !item.children?.length) return;
-  item.collapsed = !item.collapsed;
-  render();
-}
-
-// ─── Drag (long press) ───────────────────────────────────────────────────────
-let dragState = null;
-let autoScrollRAF = null;
-const MAX_SCROLL = 14;
-let markerTop = null, markerBottom = null;
-let lastTouchEndTime = 0;  // guard: prevents mouse handlers from firing after touch
-let wasDragging = false;   // guard: prevents click-collapse firing after a drag
-let currentMouseGesture = null; // { move, end } — set by bindGesture on mousedown
-
-function updateBoundaryMarkers(visibleItems) {
-  if (markerTop)    { markerTop.classList.remove('boundary-top');       markerTop = null; }
-  if (markerBottom) { markerBottom.classList.remove('boundary-bottom'); markerBottom = null; }
-  if (!visibleItems || visibleItems.length === 0) return;
-  markerTop    = visibleItems[0];
-  markerBottom = visibleItems[visibleItems.length - 1];
-  markerTop.classList.add('boundary-top');
-  if (markerTop !== markerBottom) markerBottom.classList.add('boundary-bottom');
-}
-
-function clearBoundaryMarkers() {
-  updateBoundaryMarkers([]);
-}
-
-document.addEventListener('touchmove', e => {
-  if (!dragState) return;
-  e.preventDefault();
-  updateDrag(e.touches[0].clientY, e.touches[0].clientX);
-}, { passive: false });
-
-document.addEventListener('touchend', () => {
-  if (dragState) finalizeDrag();
-}, { passive: true });
-
-document.addEventListener('touchcancel', () => {
-  if (dragState) finalizeDrag();
-}, { passive: true });
-
-// ── Mouse support (desktop) ──────────────────────────────────────────────────
-document.addEventListener('mousemove', e => {
-  if (dragState) { updateDrag(e.clientY, e.clientX); return; }
-  currentMouseGesture?.move(e.clientX, e.clientY);
-});
-
-document.addEventListener('mouseup', () => {
-  if (dragState) {
-    finalizeDrag();
-    wasDragging = true;
-    setTimeout(() => { wasDragging = false; }, 300);
-  } else {
-    currentMouseGesture?.end();
-  }
-});
-
-function startDrag(wrapper, clientY, clientX) {
-  saveUndoSnapshot();
-  if (navigator.vibrate) navigator.vibrate(30);
-  const listItem = wrapper.querySelector('.list-item');
-  listItem.classList.remove('pressing');
-  listItem.style.transition = 'none';
-  wrapper.classList.add('is-dragging');
-
-  // Collect group: parent + all immediately-following items at deeper level
-  const allWrappers = [...container.querySelectorAll('.list-item-wrapper')];
-  const startIdx = allWrappers.indexOf(wrapper);
-  const baseLevel = +wrapper.dataset.level || 0;
-  const children = [];
-  for (let i = startIdx + 1; i < allWrappers.length; i++) {
-    if ((+allWrappers[i].dataset.level || 0) <= baseLevel) break;
-    children.push(allWrappers[i]);
-  }
-
-  dragState = { wrapper, lastClientY: clientY, offsetY: 0, nestBaseX: clientX, children, originalLevel: baseLevel };
-
-  // Collapse children visually during drag
-  for (const child of children) child.style.display = 'none';
-
-  startAutoScroll();
-}
-
-// Apply parent's offsetY to all group children so they visually follow
-function syncChildTransforms() {
-  if (!dragState?.children?.length) return;
-  const t = `translateY(${dragState.offsetY}px)`;
-  for (const child of dragState.children) child.style.transform = t;
-}
-
-const NEST_THRESHOLD = 36;
-
-function updateDrag(clientY, clientX) {
-  const { wrapper } = dragState;
-  dragState.offsetY += (clientY - dragState.lastClientY) * 2;
-  dragState.lastClientY = clientY;
-  wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-  clampToBoundary();
-  checkSwap();
-  syncChildTransforms();
-  if (clientX !== undefined) {
-    detectRightShift(clientX);
-    updateDraggedLevel();
-  }
-}
-
-// Detect a right shift gesture during drag — sets rightShifted flag once
-function detectRightShift(clientX) {
-  if (dragState.nestBaseX === undefined) { dragState.nestBaseX = clientX; return; }
-  const dx = clientX - dragState.nestBaseX;
-  if (dx > NEST_THRESHOLD && !dragState.rightShifted) {
-    dragState.rightShifted = true;
-    dragState.nestBaseX = clientX;
-    if (navigator.vibrate) navigator.vibrate(10);
-  }
-}
-
-// Recompute and apply visual level of dragged item based on item above + shift flag
-function updateDraggedLevel() {
-  const { wrapper } = dragState;
-  const all = [...container.querySelectorAll('.list-item-wrapper')];
-  const idx = all.indexOf(wrapper);
-  let newLevel = 0;
-  if (idx > 0) {
-    const aboveLevel = +all[idx - 1].dataset.level || 0;
-    newLevel = dragState.rightShifted ? aboveLevel + 1 : aboveLevel;
-  }
-  dragState.pendingLevel = newLevel;
-  applyItemIndent(wrapper, newLevel);
-}
-
-function checkSwap() {
-  const { wrapper, children } = dragState;
-  const all = [...container.querySelectorAll('.list-item-wrapper')];
-  const idx = all.indexOf(wrapper);
-  const dragRect = wrapper.getBoundingClientRect();
-  const mid = dragRect.top + dragRect.height / 2;
-
-  // ── Swap UP: move group before prev ──────────────────────────────────────
-  if (idx > 0) {
-    const prev = all[idx - 1];
-    const pr = prev.getBoundingClientRect();
-    if (mid < pr.top + pr.height / 2) {
-      container.insertBefore(wrapper, prev);
-      for (const child of children) container.insertBefore(child, prev);
-      dragState.offsetY += pr.height + 1;
-      wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-      return;
-    }
-  }
-
-  // ── Swap DOWN: item after group jumps above parent ────────────────────────
-  const groupEnd = idx + children.length;
-  if (groupEnd < all.length - 1) {
-    const next = all[groupEnd + 1];
-    const nr = next.getBoundingClientRect();
-    if (mid > nr.top + nr.height / 2) {
-      container.insertBefore(next, wrapper);
-      dragState.offsetY -= nr.height + 1;
-      wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-    }
-  }
-}
-
-// Clamp element to viewport edges (header bottom ↔ viewport bottom + 30px overshoot for swap).
-function clampToBoundary() {
-  if (!dragState) return;
-  const { wrapper } = dragState;
-  const vh = window.innerHeight;
-  const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
-  const r = wrapper.getBoundingClientRect();
-  if (r.top < headerBottom - 30) {
-    dragState.offsetY += (headerBottom - 30) - r.top;
-    wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-  } else if (r.bottom > vh + 30) {
-    dragState.offsetY -= r.bottom - (vh + 30);
-    wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-  }
-}
-
-function startAutoScroll() {
-  if (autoScrollRAF) return;
-  autoScrollRAF = requestAnimationFrame(autoScrollStep);
-}
-
-function stopAutoScroll() {
-  if (autoScrollRAF) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
-}
-
-function autoScrollStep() {
-  if (!dragState) { autoScrollRAF = null; return; }
-
-  const { wrapper } = dragState;
-  const vh = window.innerHeight;
-  const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
-  const { children } = dragState;
-
-  const all = [...container.querySelectorAll('.list-item-wrapper')]
-    .filter(w => w !== wrapper && !children.includes(w));
-
-  const visible = all.filter(w => { const r = w.getBoundingClientRect(); return r.bottom > headerBottom && r.top < vh; });
-  updateBoundaryMarkers(visible);
-
-  const dragRect = wrapper.getBoundingClientRect();
-
-  const allWithDragged = [...container.querySelectorAll('.list-item-wrapper')];
-  const parentIdx   = allWithDragged.indexOf(wrapper);
-  const draggedIsFirst = parentIdx === 0;
-  const draggedIsLast  = parentIdx + children.length === allWithDragged.length - 1;
-
-  // ── Scroll UP ──────────────────────────────────────────────────────────────
-  if (dragRect.top < headerBottom) {
-    if (!draggedIsFirst) {
-      const speed = -Math.min((headerBottom - dragRect.top) / 5 + 2, MAX_SCROLL);
-      window.scrollBy(0, speed);
-      dragState.offsetY += speed;
-      wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-      clampToBoundary();
-      checkSwap();
-      syncChildTransforms();
-      updateDraggedLevel();
-    }
-
-  // ── Scroll DOWN ────────────────────────────────────────────────────────────
-  } else if (dragRect.bottom > vh) {
-    if (!draggedIsLast) {
-      const speed = Math.min((dragRect.bottom - vh) / 5 + 2, MAX_SCROLL);
-      window.scrollBy(0, speed);
-      dragState.offsetY += speed;
-      wrapper.style.transform = `translateY(${dragState.offsetY}px)`;
-      clampToBoundary();
-      checkSwap();
-      syncChildTransforms();
-      updateDraggedLevel();
-    }
-  }
-
-  autoScrollRAF = requestAnimationFrame(autoScrollStep);
-}
-
-function finalizeDrag() {
-  stopAutoScroll();
-  clearBoundaryMarkers();
-  const { wrapper, pendingLevel, rightShifted, children, originalLevel } = dragState;
-  dragState = null;
-
-  // If no right shift: correct position when group lands between items of different levels.
-  if (!rightShifted) {
-    const all = [...container.querySelectorAll('.list-item-wrapper')];
-    const idx = all.indexOf(wrapper);
-    const groupEnd = idx + children.length;
-    if (idx > 0 && groupEnd < all.length - 1) {
-      const aboveLevel = +all[idx - 1].dataset.level || 0;
-      const belowLevel = +all[groupEnd + 1].dataset.level || 0;
-      if (belowLevel > aboveLevel) {
-        const aboveWrapper = all[idx - 1];
-        container.insertBefore(wrapper, aboveWrapper);
-        for (const child of children) container.insertBefore(child, aboveWrapper);
-      }
-    }
-  }
-
-  // Apply pending nesting level; propagate delta to children.
-  if (pendingLevel !== undefined) {
-    const delta = pendingLevel - originalLevel;
-    applyItemIndent(wrapper, pendingLevel);
-    for (const child of children) {
-      const newChildLevel = Math.max(0, (+child.dataset.level || 0) + delta);
-      applyItemIndent(child, newChildLevel);
-    }
-  }
-
-  const listItem = wrapper.querySelector('.list-item');
-  listItem.style.transition = '';
-  wrapper.style.transition = 'transform 0.22s cubic-bezier(.4,0,.2,1)';
-  wrapper.style.transform = '';
-  for (const child of children) {
-    child.style.transition = 'transform 0.22s cubic-bezier(.4,0,.2,1)';
-    child.style.transform = '';
-  }
-
-  setTimeout(() => {
-    wrapper.style.transition = '';
-    wrapper.classList.remove('is-dragging');
-    const wrappers = [...container.querySelectorAll('.list-item-wrapper')];
-    const flatList = wrappers.map(w => ({ id: +w.dataset.id, level: +w.dataset.level || 0 }));
-    items = buildTree(flatList);
-    render();
-  }, 220);
-}
-
-// ─── Side panels (unified) ────────────────────────────────────────────────────
-const dropPanel = document.getElementById('drop-zone-panel');
-const tagPanel  = document.getElementById('tag-panel');
-let dropAction  = null;
-let tagAction   = null;
-
-const ITEM_H         = 60;
-const AVAILABLE_TAGS = ['Важное', 'Срочно', 'Купить', 'Дом', 'Работа', 'Отложить'];
-
-function showPanel(panelEl, anchorY) {
-  const count  = panelEl.querySelectorAll('.panel-item').length;
-  const totalH = count * ITEM_H;
-  const top    = Math.max(0, Math.min(anchorY - totalH / 2, window.innerHeight - totalH));
-  panelEl.style.top   = top + 'px';
-  panelEl._anchorY    = anchorY;
-  panelEl.classList.add('visible');
-}
-
-function setActiveItem(panelEl, dy) {
-  const panelItems = [...panelEl.querySelectorAll('.panel-item')];
-  if (!panelItems.length) return null;
-  const top = parseFloat(panelEl.style.top);
-  const idx = Math.max(0, Math.min(panelItems.length - 1,
-    Math.floor((panelEl._anchorY + dy - top) / ITEM_H)));
-  panelItems.forEach((it, i) => it.classList.toggle('active', i === idx));
-  return panelItems[idx]?.dataset.action || null;
-}
-
-function hidePanel(panelEl) {
-  panelEl.classList.remove('visible');
-  panelEl.querySelectorAll('.panel-item').forEach(it => it.classList.remove('active'));
-}
-
-function showDropPanel(anchorY) {
-  showPanel(dropPanel, anchorY);
-  dropAction = setActiveItem(dropPanel, 0);
-}
-
-function hideDrop() { hidePanel(dropPanel); dropAction = null; }
-
-function showTagPanel(anchorY, itemId) {
-  const item     = findItem(itemId);
-  const itemTags = item?.tags || [];
-  const notApplied = AVAILABLE_TAGS.filter(t => !itemTags.includes(t));
-  const applied    = AVAILABLE_TAGS.filter(t =>  itemTags.includes(t));
-
-  tagPanel.innerHTML = '';
-  [...notApplied, ...applied].forEach(tag => {
-    const isApplied = itemTags.includes(tag);
-    const div = document.createElement('div');
-    div.className = 'panel-item';
-    div.style.background = isApplied ? '#636366' : '#5856d6';
-    div.dataset.action = tag;
-    div.innerHTML = `<span class="panel-icon">${isApplied ? '−' : '#'}</span><span class="panel-label">${escHtml(tag)}</span>`;
-    tagPanel.appendChild(div);
+<script type="module">
+  const version = new URL(window.location.href).searchParams.get('v') || 'dev';
+  const load = (modulePath) => import(`${modulePath}?v=${encodeURIComponent(version)}`);
+
+  const [
+    { seedState },
+    { createStore },
+    { createInterpreter },
+    { createRenderer },
+    { createUI },
+    { createBackendAdapter },
+    { createSync },
+    { createApp }
+  ] = await Promise.all([
+    load('./list-data.js'),
+    load('./src/list-store.js'),
+    load('./src/list-interpreter.js'),
+    load('./src/list-renderer.js'),
+    load('./src/list-ui.js'),
+    load('./src/list-backend-adapter.js'),
+    load('./src/list-sync.js'),
+    load('./src/list-app.js')
+  ]);
+
+  const store = createStore({
+    storageKey: 'searchmydata.list-interface.state',
+    storage: window.localStorage,
+    seedState
   });
 
-  showPanel(tagPanel, anchorY);
-  tagAction = setActiveItem(tagPanel, 0);
-}
+  let app = null;
+  const ui = createUI({
+    rootPanel: document.getElementById('app-root'),
+    header: document.querySelector('header'),
+    viewToggleButton: document.getElementById('view-toggle-btn'),
+    undoButton: document.getElementById('undo-btn'),
+    addButton: document.getElementById('add-btn'),
+    container: document.getElementById('list-container'),
+    toastEl: document.getElementById('toast'),
+    dropPanel: document.getElementById('drop-zone-panel'),
+    tagPanel: document.getElementById('tag-panel'),
+    overlay: document.getElementById('modal-overlay'),
+    input1: document.getElementById('input-line1'),
+    input2: document.getElementById('input-line2'),
+    modalTitle: document.getElementById('modal-title'),
+    btnConfirm: document.getElementById('btn-confirm'),
+    btnCancel: document.getElementById('btn-cancel'),
+    viewContent: document.getElementById('modal-view-content'),
+    viewLine1: document.getElementById('view-line1'),
+    viewLine2: document.getElementById('view-line2'),
+    viewTagsEl: document.getElementById('view-tags'),
+    actionLogPanel: document.getElementById('action-log-panel')
+  });
 
-function hideTagPanel() { hidePanel(tagPanel); tagAction = null; }
+  const renderer = createRenderer({
+    rootPanel: document.getElementById('app-root'),
+    container: document.getElementById('list-container'),
+    actionLogPanel: document.getElementById('action-log-panel'),
+    actionLogList: document.getElementById('action-log-list'),
+    bindRow: ui.bindRow,
+    onRendered: ui.onRendered
+  });
 
-function execDrop(action, itemId, wrapper) {
-  if (action === 'delete')    doDelete(itemId, wrapper);
-  else if (action === 'edit') openModal('edit', itemId);
-  else if (action === 'nest') openModal('nest', itemId);
-  else if (action === 'view') openModal('view', itemId);
-}
+  const adapter = createBackendAdapter();
+  let sync = null;
 
-function execTag(tag, itemId) {
-  if (!tag) return;
-  const item = findItem(itemId);
-  if (!item) return;
-  if (!item.tags) item.tags = [];
-  const idx = item.tags.indexOf(tag);
-  if (idx >= 0) { item.tags.splice(idx, 1); showToast(`«${tag}» убран`); }
-  else          { item.tags.push(tag);       showToast(`«${tag}» добавлен`); }
-  render();
-}
-
-// ─── Swipe gesture ───────────────────────────────────────────────────────────
-function bindGesture(el, actionBg, itemId, wrapper) {
-  let startX, startY, curX, curY, active = false, longTimer = null, lockedH = false;
-  let rdAnchor = null, ldAnchor = null;
-  let mouseSwipeDone = false; // blocks click-collapse after a swipe action on desktop
-
-  // ── Shared swipe-move logic (called from touchmove and mousemove) ──────────
-  const handleMoveXY = (clientX, clientY) => {
-    if (dragState) return;
-    if (!active) return;
-    curX = clientX; curY = clientY;
-    const dx = curX - startX;
-    const dy = curY - startY;
-
-    if (longTimer && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-      clearTimeout(longTimer); longTimer = null;
-      el.classList.remove('pressing');
-    }
-
-    if (!lockedH) {
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 6) {
-        lockedH = true;
-      } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 6) {
-        el.style.transform = '';
-        actionBg.style.opacity = '0';
-        actionBg.className = 'action-bg del';
-        active = false;
-        currentMouseGesture = null;
-        return;
-      } else { return; }
-    }
-
-    const thresh = window.innerWidth * 0.20;
-    const oy = curY - startY;
-
-    if (rdAnchor !== null || (ldAnchor === null && dx > thresh)) {
-      if (rdAnchor !== null && dx < thresh) {
-        hideDrop(); rdAnchor = null;
-        el.style.transform = `translate(0px, ${oy}px)`; return;
+  app = createApp({
+    adapter,
+    interpreter: createInterpreter(),
+    renderer,
+    store,
+    sync: {
+      enqueue(state, actionLogEntry) {
+        return sync.enqueue(state, actionLogEntry);
       }
-      if (!rdAnchor) { rdAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2; showDropPanel(rdAnchor); }
-      el.style.transform = `translate(${Math.min(dx, 110)}px, ${oy}px)`;
-      actionBg.style.opacity = '0';
-      dropAction = setActiveItem(dropPanel, oy); return;
-    }
-
-    if (ldAnchor !== null || dx < -thresh) {
-      if (ldAnchor !== null && dx > -thresh) {
-        hideTagPanel(); ldAnchor = null;
-        el.style.transform = `translate(0px, ${oy}px)`; return;
-      }
-      if (!ldAnchor) { ldAnchor = el.getBoundingClientRect().top + el.offsetHeight / 2; showTagPanel(ldAnchor, itemId); }
-      el.style.transform = `translate(${Math.max(dx, -110)}px, ${oy}px)`;
-      actionBg.style.opacity = '0';
-      tagAction = setActiveItem(tagPanel, oy); return;
-    }
-
-    el.style.transform = `translate(${dx}px, ${oy}px)`;
-    actionBg.style.opacity = '0';
-  };
-
-  // ── Shared end logic (isMouse=true skips collapse, handled by click event) ─
-  const handleEnd = (isMouse = false) => {
-    clearTimeout(longTimer); longTimer = null;
-    el.classList.remove('pressing');
-    if (isMouse) currentMouseGesture = null;
-
-    const act = dropAction, wasRight = !!rdAnchor, wasLeft = !!ldAnchor;
-    const savedTagAction = tagAction;
-    rdAnchor = null; ldAnchor = null;
-    hideDrop(); hideTagPanel();
-
-    if (dragState || !active) return;
-    active = false;
-
-    const dx = curX - startX;
-    const dy = curY - startY;
-
-    el.style.transition = 'transform 0.3s cubic-bezier(.4,0,.2,1)';
-    el.style.transform = '';
-    actionBg.style.opacity = '0';
-
-    if (wasRight && dx > 30 && act) {
-      if (isMouse) mouseSwipeDone = true;
-      execDrop(act, itemId, wrapper);
-    } else if (wasLeft && dx < -30 && savedTagAction) {
-      if (isMouse) mouseSwipeDone = true;
-      execTag(savedTagAction, itemId);
-    } else if (!isMouse && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
-      toggleCollapse(itemId); // touch tap → collapse (mouse uses click event)
-    }
-  };
-
-  // ── Touch handlers ───────────────────────────────────────────────────────
-  el.addEventListener('touchstart', e => {
-    if (dragState || modalOpen) return;
-    const t = e.touches[0];
-    startX = curX = t.clientX;
-    startY = curY = t.clientY;
-    active = true; lockedH = false; rdAnchor = null; ldAnchor = null;
-    el.style.transition = 'none';
-    el.classList.add('pressing');
-    longTimer = setTimeout(() => {
-      longTimer = null; active = false; rdAnchor = null;
-      hideDrop(); el.style.transform = ''; actionBg.style.opacity = '0';
-      startDrag(wrapper, curY, curX);
-    }, 370);
-  }, { passive: true });
-
-  el.addEventListener('touchmove', e => {
-    handleMoveXY(e.touches[0].clientX, e.touches[0].clientY);
-    if (lockedH) e.preventDefault();
-  }, { passive: false });
-
-  el.addEventListener('touchend', () => { lastTouchEndTime = Date.now(); handleEnd(false); });
-  el.addEventListener('touchcancel', () => handleEnd(false));
-
-  // ── Mouse handlers (desktop) ─────────────────────────────────────────────
-  el.addEventListener('mousedown', e => {
-    if (Date.now() - lastTouchEndTime < 500) return;
-    if (dragState || modalOpen) return;
-    if (e.button !== 0) return;
-    startX = curX = e.clientX;
-    startY = curY = e.clientY;
-    active = true; lockedH = false; rdAnchor = null; ldAnchor = null;
-    el.style.transition = 'none';
-    el.classList.add('pressing');
-    currentMouseGesture = { move: handleMoveXY, end: () => handleEnd(true) };
-    longTimer = setTimeout(() => {
-      longTimer = null; active = false; rdAnchor = null;
-      hideDrop(); el.style.transform = ''; actionBg.style.opacity = '0';
-      startDrag(wrapper, curY, curX);
-    }, 370);
+    },
+    ui
   });
 
-  el.addEventListener('click', e => {
-    if (Date.now() - lastTouchEndTime < 500) return;
-    if (dragState || wasDragging) return;
-    if (mouseSwipeDone) { mouseSwipeDone = false; return; }
-    toggleCollapse(itemId);
-  });
-}
-
-// ─── Actions ─────────────────────────────────────────────────────────────────
-function doDelete(itemId, wrapper) {
-  wrapper.style.transition = 'max-height 0.3s ease, opacity 0.3s ease, margin 0.3s ease';
-  wrapper.style.maxHeight = wrapper.offsetHeight + 'px';
-  wrapper.style.overflow = 'hidden';
-  requestAnimationFrame(() => {
-    wrapper.style.maxHeight = '0';
-    wrapper.style.opacity = '0';
-    wrapper.style.marginBottom = '0';
-  });
-  setTimeout(() => {
-    removeFromTree(itemId);
-    render();
-    showToast('Элемент удалён');
-  }, 310);
-}
-
-// ─── Toast ────────────────────────────────────────────────────────────────────
-let toastTimer;
-const toastEl = document.getElementById('toast');
-function showToast(msg) {
-  clearTimeout(toastTimer);
-  toastEl.textContent = msg;
-  toastEl.classList.add('show');
-  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
-}
-
-// ─── Modal (add / edit / nest) ────────────────────────────────────────────────
-const overlay       = document.getElementById('modal-overlay');
-const input1        = document.getElementById('input-line1');
-const input2        = document.getElementById('input-line2');
-const modalTitle    = document.getElementById('modal-title');
-const btnConfirm    = document.getElementById('btn-confirm');
-const btnCancel     = document.getElementById('btn-cancel');
-const viewContent   = document.getElementById('modal-view-content');
-const viewLine1     = document.getElementById('view-line1');
-const viewLine2     = document.getElementById('view-line2');
-const viewTagsEl    = document.getElementById('view-tags');
-
-let modalMode     = 'add';
-let modalTargetId = null;
-let modalOpen     = false;
-
-function openModal(mode, targetId) {
-  modalMode     = mode || 'add';
-  modalTargetId = targetId || null;
-  modalOpen     = true;
-
-  // Reset to edit layout by default
-  viewContent.style.display  = 'none';
-  input1.style.display       = '';
-  input2.style.display       = '';
-  btnConfirm.style.display   = '';
-  btnCancel.textContent      = 'Отмена';
-  input1.style.borderColor   = '';
-
-  if (mode === 'view') {
-    const item = findItem(targetId);
-    viewLine1.textContent      = item?.line1 || '';
-    viewLine2.textContent      = item?.line2 || '';
-    viewLine2.style.display    = item?.line2 ? '' : 'none';
-    viewTagsEl.innerHTML       = (item?.tags || []).map(t => `<span class="item-tag">${escHtml(t)}</span>`).join('');
-    viewTagsEl.style.display   = item?.tags?.length ? '' : 'none';
-    viewContent.style.display  = '';
-    input1.style.display       = 'none';
-    input2.style.display       = 'none';
-    btnConfirm.style.display   = 'none';
-    btnCancel.textContent      = 'Закрыть';
-    modalTitle.textContent     = 'Просмотр';
-  } else if (mode === 'edit') {
-    const item = findItem(targetId);
-    input1.value = item ? item.line1 : '';
-    input2.value = item?.line2 || '';
-    modalTitle.textContent = 'Редактировать';
-    btnConfirm.textContent = 'Сохранить';
-  } else if (mode === 'nest') {
-    input1.value = ''; input2.value = '';
-    modalTitle.textContent = 'Новый вложенный';
-    btnConfirm.textContent = 'Добавить';
-  } else {
-    input1.value = ''; input2.value = '';
-    modalTitle.textContent = 'Новый элемент';
-    btnConfirm.textContent = 'Добавить';
-  }
-
-  // Focus input BEFORE opening overlay — iOS only triggers keyboard
-  // within the original gesture; calling focus() first, while the input
-  // is in the DOM but under opacity:0, keeps it in the trusted context.
-  if (mode !== 'view') {
-    input1.readOnly = true;   // prevent keyboard flash before modal appears
-    input1.focus();
-    input1.readOnly = false;  // remove readonly so keyboard shows when modal opens
-  }
-  overlay.classList.add('open');
-}
-
-function closeModal() {
-  overlay.classList.remove('open');
-  modalOpen = false;
-}
-
-function confirmModal() {
-  const l1 = input1.value.trim();
-  if (!l1) { input1.focus(); input1.style.borderColor = '#ff3b30'; return; }
-  input1.style.borderColor = '';
-  const l2 = input2.value.trim();
-
-  if (modalMode === 'edit') {
-    const item = findItem(modalTargetId);
-    if (item) { item.line1 = l1; item.line2 = l2 || undefined; }
-    render();
-    closeModal();
-    showToast('Сохранено');
-  } else if (modalMode === 'nest') {
-    const parent = findItem(modalTargetId);
-    if (parent) {
-      if (!parent.children) parent.children = [];
-      parent.children.push({ id: nextId++, line1: l1, line2: l2 || undefined });
+  sync = createSync({
+    adapter,
+    store,
+    onStateChange(nextState) {
+      app.onSyncedState(nextState);
     }
-    render();
-    closeModal();
-    showToast('Добавлен вложенный');
-  } else {
-    items.push({ id: nextId++, line1: l1, line2: l2 || undefined });
-    render();
-    closeModal();
-    showToast('Элемент добавлен');
-  }
-}
+  });
 
-document.getElementById('add-btn').addEventListener('click', () => openModal('add'));
-document.getElementById('btn-cancel').addEventListener('click', closeModal);
-overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
-btnConfirm.addEventListener('click', confirmModal);
-[input1, input2].forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') confirmModal(); }));
-
-// ─── Diagnostic panel ─────────────────────────────────────────────────────────
-const diagPanel  = document.getElementById('diag-panel');
-const diagLog    = document.getElementById('diag-log');
-const diagStatus = document.getElementById('diag-status');
-
-document.getElementById('diag-header').addEventListener('click', () => {
-  diagPanel.classList.toggle('expanded');
-});
-
-function diagLog_(msg, type = 'info') {
-  const now = new Date();
-  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-  const entry = document.createElement('div');
-  entry.className = 'diag-entry';
-  entry.innerHTML = `<span class="diag-time">${time}</span><span class="diag-msg diag-${type}">${msg}</span>`;
-  diagLog.appendChild(entry);
-  diagLog.scrollTop = diagLog.scrollHeight;
-  diagStatus.textContent = msg;
-  diagStatus.className = `diag-${type}`;
-  // keep last 50 entries
-  while (diagLog.children.length > 50) diagLog.removeChild(diagLog.firstChild);
-}
-
-// ─── Push-to-Talk ─────────────────────────────────────────────────────────────
-const pttEndpoint = 'https://minds.myapp.fund/voice/';
-
-document.getElementById('diag-copy-btn').addEventListener('click', () => {
-  const entries = [...document.querySelectorAll('.diag-entry')];
-  const text = entries.map(e => {
-    const t = e.querySelector('.diag-time')?.textContent || '';
-    const m = e.querySelector('.diag-msg')?.textContent || '';
-    return `${t} ${m}`;
-  }).join('\n');
-  navigator.clipboard.writeText(text)
-    .then(() => showToast('Лог скопирован'))
-    .catch(() => showToast('Не удалось скопировать'));
-});
-
-let mediaRecorder   = null;
-let audioChunks     = [];
-let pttStream       = null;
-const pttBtn   = document.getElementById('ptt-btn');
-const pttLabel = document.getElementById('ptt-label');
-
-pttBtn.addEventListener('contextmenu', e => e.preventDefault());
-
-// ── Pointer down: start recording ───────────────────────────────────────────
-function pttPointerDown(e) {
-  e.preventDefault();
-  startPTT();
-}
-
-// ── Pointer up: stop + send ──────────────────────────────────────────────────
-function pttPointerUp(e) {
-  e.preventDefault();
-  stopPTT();
-}
-
-pttBtn.addEventListener('touchstart',  pttPointerDown, { passive: false });
-pttBtn.addEventListener('touchend',    pttPointerUp,   { passive: false });
-pttBtn.addEventListener('touchcancel', e => { e.preventDefault(); pttAbort(); }, { passive: false });
-pttBtn.addEventListener('mousedown',  pttPointerDown);
-pttBtn.addEventListener('mouseup',    pttPointerUp);
-pttBtn.addEventListener('mouseleave', () => { if (mediaRecorder) stopPTT(); });
-
-// ── Start recording ──────────────────────────────────────────────────────────
-async function startPTT() {
-  if (mediaRecorder) return;
-  if (!pttEndpoint) {
-    diagLog_('URL сервера не задан', 'error');
-    showToast('URL сервера не задан');
-    return;
-  }
-  diagLog_(`Endpoint: ${pttEndpoint}`, 'info');
-  diagLog_('Запрос доступа к микрофону…', 'info');
-  try {
-    pttStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (err) {
-    diagLog_(`Микрофон: ${err.name} — ${err.message}`, 'error');
-    showToast('Нет доступа к микрофону');
-    return;
-  }
-  audioChunks = [];
-  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-    ? 'audio/webm;codecs=opus'
-    : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
-      ? 'audio/ogg;codecs=opus' : '';
-  diagLog_(`MediaRecorder: ${mimeType || 'default'}`, 'info');
-  mediaRecorder = new MediaRecorder(pttStream, mimeType ? { mimeType } : {});
-  mediaRecorder.addEventListener('dataavailable', e => { if (e.data.size > 0) audioChunks.push(e.data); });
-  mediaRecorder.addEventListener('stop', sendAudio);
-  mediaRecorder.start();
-  diagLog_('● Запись…', 'warn');
-  pttBtn.classList.add('recording');
-  pttLabel.textContent = 'Говорю…';
-  if (navigator.vibrate) navigator.vibrate(20);
-}
-
-// ── Stop + send ──────────────────────────────────────────────────────────────
-function stopPTT() {
-  if (!mediaRecorder) return;
-  mediaRecorder.stop();
-  pttStream.getTracks().forEach(t => t.stop());
-  pttStream = null;
-  mediaRecorder = null;
-  diagLog_('Запись остановлена, отправляю…', 'info');
-  pttBtn.classList.remove('recording');
-  pttBtn.classList.add('sending');
-  pttLabel.textContent = 'Отправка…';
-  if (navigator.vibrate) navigator.vibrate([10, 50, 10]);
-}
-
-// ── Abort without sending ────────────────────────────────────────────────────
-function pttAbort() {
-  if (!mediaRecorder) return;
-  audioChunks = [];
-  mediaRecorder.removeEventListener('stop', sendAudio);
-  try { mediaRecorder.stop(); } catch(e) {}
-  if (pttStream) { pttStream.getTracks().forEach(t => t.stop()); pttStream = null; }
-  mediaRecorder = null;
-  diagLog_('Запись отменена', 'warn');
-  pttBtn.classList.remove('recording');
-  pttLabel.textContent = 'Голос';
-}
-
-// ── Send audio to server ─────────────────────────────────────────────────────
-async function sendAudio() {
-  if (!audioChunks.length) {
-    diagLog_('Нет аудиоданных', 'error');
-    pttReset(); return;
-  }
-  const blob = new Blob(audioChunks, { type: audioChunks[0].type || 'audio/webm' });
-  audioChunks = [];
-  const ext  = blob.type.includes('ogg') ? 'ogg' : 'webm';
-  const filename = `voice_${Date.now()}.${ext}`;
-  diagLog_(`Blob: ${blob.type}, ${(blob.size/1024).toFixed(1)} KB, файл: ${filename}`, 'info');
-  const form = new FormData();
-  form.append('audio', blob, filename);
-  diagLog_(`POST → ${pttEndpoint}`, 'info');
-  try {
-    const res = await fetch(pttEndpoint, { method: 'POST', body: form });
-    const text = await res.text().catch(() => '');
-    if (res.ok) {
-      diagLog_(`✓ ${res.status} ${res.statusText} | ${text.slice(0,80)}`, 'success');
-      showToast('Отправлено ✓');
-    } else {
-      diagLog_(`✗ ${res.status} ${res.statusText} | ${text.slice(0,80)}`, 'error');
-      showToast(`Ошибка сервера: ${res.status}`);
-    }
-  } catch (err) {
-    diagLog_(`Fetch error: ${err.message}`, 'error');
-    showToast('Не удалось отправить');
-  } finally {
-    pttReset();
-  }
-}
-
-function pttReset() {
-  pttBtn.classList.remove('sending');
-  pttLabel.textContent = 'Голос';
-}
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
-render();
+  await app.init();
 </script>
 </body>
 </html>
