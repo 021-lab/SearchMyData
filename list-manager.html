@@ -76,6 +76,7 @@ async function initializeApp() {
     syncAdapter: new OfflineAdapter(),
     storage: { localFilePath: './list-data.json' }
   });
+  window.listInterface = listInterface;
 
   await listInterface.init();
   render();
@@ -487,7 +488,11 @@ function finalizeDrag() {
   if (pendingLevel !== undefined && pendingLevel > 0) {
     const itemId = +wrapper.dataset.id;
     const parentItem = listInterface.model.findItem(itemId);
-    const itemAbove = listInterface.model.findItem(+[...container.querySelectorAll('.list-item-wrapper')][0]?.dataset.id);
+    const orderedWrappers = [...container.querySelectorAll('.list-item-wrapper')];
+    const wrapperIdx = orderedWrappers.indexOf(wrapper);
+    const itemAbove = wrapperIdx > 0
+      ? listInterface.model.findItem(+orderedWrappers[wrapperIdx - 1].dataset.id)
+      : null;
     if (parentItem && itemAbove) {
       listInterface.onUserAction('moveItem', { itemId, newParentId: itemAbove.id });
     }
@@ -591,7 +596,7 @@ function execTag(tag, itemId) {
   if (!tag) return;
   const item = listInterface.model.findItem(itemId);
   if (!item) return;
-  const idx = item.tags?.indexOf(tag) || -1;
+  const idx = item.tags?.indexOf(tag) ?? -1;
   if (idx >= 0) {
     listInterface.onUserAction('removeTag', { itemId, tag });
     showToast(`«${tag}» убран`);

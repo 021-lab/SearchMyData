@@ -83,13 +83,14 @@ class ListInterface {
    * Пользователь совершил действие (optimistic update)
    */
   onUserAction(actionType, data) {
-    if (typeof this.model[actionType] !== 'function') {
+    const action = this.getModelAction(actionType, data);
+    if (!action) {
       console.error(`[ListInterface] Unknown action: ${actionType}`);
       return [];
     }
 
     // 1️⃣ Применить локально сразу (optimistic update)
-    const patches = this.model[actionType](data);
+    const patches = action();
 
     // 2️⃣ Выдать событие для UI
     this.bus.emit(actionType, data);
@@ -116,6 +117,28 @@ class ListInterface {
     this.backgroundSync();
 
     return patches;
+  }
+
+  getModelAction(actionType, data = {}) {
+    switch (actionType) {
+      case 'addItem':
+        return () => this.model.addItem(data.data || data, data.parentId ?? null);
+      case 'editItem':
+        return () => this.model.editItem(data.itemId, data.updates || {});
+      case 'changeStatus':
+        return () => this.model.changeStatus(data.itemId, data.newStatus);
+      case 'moveItem':
+        return () => this.model.moveItem(data.itemId, data.newParentId ?? null);
+      case 'addTag':
+        return () => this.model.addTag(data.itemId, data.tag);
+      case 'removeTag':
+        return () => this.model.removeTag(data.itemId, data.tag);
+      case 'deleteItem':
+        return () => this.model.deleteItem(data.itemId);
+      default:
+        if (typeof this.model[actionType] !== 'function') return null;
+        return () => this.model[actionType](data);
+    }
   }
 
   /**
