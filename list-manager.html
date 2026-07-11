@@ -6,11 +6,21 @@
 <title>Список</title>
 <script>
   const previewLocation = new URL(window.location.href);
+  const previewTarget = previewLocation.search.startsWith('?http')
+    ? previewLocation.search.slice(1)
+    : '';
   const previewHashVersion = previewLocation.hash.startsWith('#v=') ? previewLocation.hash.slice(3) : '';
   const previewVersion = previewLocation.searchParams.get('v') || previewHashVersion || 'dev';
+  const previewAssetBase = previewTarget
+    ? new URL('./', previewTarget).href
+    : new URL('./', previewLocation).href;
+  window.__LIST_MANAGER_BOOTSTRAP__ = {
+    assetBase: previewAssetBase,
+    version: previewVersion
+  };
   const cssLink = document.createElement('link');
   cssLink.rel = 'stylesheet';
-  cssLink.href = `./list-manager.css?v=${encodeURIComponent(previewVersion)}`;
+  cssLink.href = new URL(`list-manager.css?v=${encodeURIComponent(previewVersion)}`, previewAssetBase).href;
   document.head.appendChild(cssLink);
 </script>
 </head>
@@ -66,96 +76,106 @@
   </div>
 </div>
 
-<script type="module">
-  const locationUrl = new URL(window.location.href);
-  const hashVersion = locationUrl.hash.startsWith('#v=') ? locationUrl.hash.slice(3) : '';
-  const version = locationUrl.searchParams.get('v') || hashVersion || 'dev';
-  const load = (modulePath) => import(`${modulePath}?v=${encodeURIComponent(version)}`);
+<script>
+  async function bootstrapListManager() {
+    const bootstrapConfig = window.__LIST_MANAGER_BOOTSTRAP__ || {};
+    const version = bootstrapConfig.version || 'dev';
+    const assetBase = bootstrapConfig.assetBase || new URL('./', window.location.href).href;
+    const load = (modulePath) => {
+      const assetUrl = new URL(modulePath, assetBase);
+      assetUrl.searchParams.set('v', version);
+      return import(assetUrl.href);
+    };
 
-  const [
-    { seedState },
-    { createStore },
-    { createInterpreter },
-    { createRenderer },
-    { createUI },
-    { createBackendAdapter },
-    { createSync },
-    { createApp }
-  ] = await Promise.all([
-    load('./list-data.js'),
-    load('./src/list-store.js'),
-    load('./src/list-interpreter.js'),
-    load('./src/list-renderer.js'),
-    load('./src/list-ui.js'),
-    load('./src/list-backend-adapter.js'),
-    load('./src/list-sync.js'),
-    load('./src/list-app.js')
-  ]);
+    const [
+      { seedState },
+      { createStore },
+      { createInterpreter },
+      { createRenderer },
+      { createUI },
+      { createBackendAdapter },
+      { createSync },
+      { createApp }
+    ] = await Promise.all([
+      load('./list-data.js'),
+      load('./src/list-store.js'),
+      load('./src/list-interpreter.js'),
+      load('./src/list-renderer.js'),
+      load('./src/list-ui.js'),
+      load('./src/list-backend-adapter.js'),
+      load('./src/list-sync.js'),
+      load('./src/list-app.js')
+    ]);
 
-  const store = createStore({
-    storageKey: 'searchmydata.list-interface.state',
-    storage: window.localStorage,
-    seedState
-  });
+    const store = createStore({
+      storageKey: 'searchmydata.list-interface.state',
+      storage: window.localStorage,
+      seedState
+    });
 
-  let app = null;
-  const ui = createUI({
-    rootPanel: document.getElementById('app-root'),
-    header: document.querySelector('header'),
-    viewToggleButton: document.getElementById('view-toggle-btn'),
-    undoButton: document.getElementById('undo-btn'),
-    addButton: document.getElementById('add-btn'),
-    container: document.getElementById('list-container'),
-    toastEl: document.getElementById('toast'),
-    dropPanel: document.getElementById('drop-zone-panel'),
-    tagPanel: document.getElementById('tag-panel'),
-    overlay: document.getElementById('modal-overlay'),
-    input1: document.getElementById('input-line1'),
-    input2: document.getElementById('input-line2'),
-    modalTitle: document.getElementById('modal-title'),
-    btnConfirm: document.getElementById('btn-confirm'),
-    btnCancel: document.getElementById('btn-cancel'),
-    viewContent: document.getElementById('modal-view-content'),
-    viewLine1: document.getElementById('view-line1'),
-    viewLine2: document.getElementById('view-line2'),
-    viewTagsEl: document.getElementById('view-tags'),
-    actionLogPanel: document.getElementById('action-log-panel')
-  });
+    let app = null;
+    const ui = createUI({
+      rootPanel: document.getElementById('app-root'),
+      header: document.querySelector('header'),
+      viewToggleButton: document.getElementById('view-toggle-btn'),
+      undoButton: document.getElementById('undo-btn'),
+      addButton: document.getElementById('add-btn'),
+      container: document.getElementById('list-container'),
+      toastEl: document.getElementById('toast'),
+      dropPanel: document.getElementById('drop-zone-panel'),
+      tagPanel: document.getElementById('tag-panel'),
+      overlay: document.getElementById('modal-overlay'),
+      input1: document.getElementById('input-line1'),
+      input2: document.getElementById('input-line2'),
+      modalTitle: document.getElementById('modal-title'),
+      btnConfirm: document.getElementById('btn-confirm'),
+      btnCancel: document.getElementById('btn-cancel'),
+      viewContent: document.getElementById('modal-view-content'),
+      viewLine1: document.getElementById('view-line1'),
+      viewLine2: document.getElementById('view-line2'),
+      viewTagsEl: document.getElementById('view-tags'),
+      actionLogPanel: document.getElementById('action-log-panel')
+    });
 
-  const renderer = createRenderer({
-    rootPanel: document.getElementById('app-root'),
-    container: document.getElementById('list-container'),
-    actionLogPanel: document.getElementById('action-log-panel'),
-    actionLogList: document.getElementById('action-log-list'),
-    bindRow: ui.bindRow,
-    onRendered: ui.onRendered
-  });
+    const renderer = createRenderer({
+      rootPanel: document.getElementById('app-root'),
+      container: document.getElementById('list-container'),
+      actionLogPanel: document.getElementById('action-log-panel'),
+      actionLogList: document.getElementById('action-log-list'),
+      bindRow: ui.bindRow,
+      onRendered: ui.onRendered
+    });
 
-  const adapter = createBackendAdapter();
-  let sync = null;
+    const adapter = createBackendAdapter();
+    let sync = null;
 
-  app = createApp({
-    adapter,
-    interpreter: createInterpreter(),
-    renderer,
-    store,
-    sync: {
-      enqueue(state, actionLogEntry) {
-        return sync.enqueue(state, actionLogEntry);
+    app = createApp({
+      adapter,
+      interpreter: createInterpreter(),
+      renderer,
+      store,
+      sync: {
+        enqueue(state, actionLogEntry) {
+          return sync.enqueue(state, actionLogEntry);
+        }
+      },
+      ui
+    });
+
+    sync = createSync({
+      adapter,
+      store,
+      onStateChange(nextState) {
+        app.onSyncedState(nextState);
       }
-    },
-    ui
-  });
+    });
 
-  sync = createSync({
-    adapter,
-    store,
-    onStateChange(nextState) {
-      app.onSyncedState(nextState);
-    }
-  });
+    await app.init();
+  }
 
-  await app.init();
+  bootstrapListManager().catch((error) => {
+    console.error('Failed to bootstrap list manager', error);
+  });
 </script>
 </body>
 </html>
