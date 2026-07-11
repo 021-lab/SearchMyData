@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Список</title>
 <script>
-  const previewVersion = new URL(window.location.href).searchParams.get('v') || 'dev';
+  const previewLocation = new URL(window.location.href);
+  const previewHashVersion = previewLocation.hash.startsWith('#v=') ? previewLocation.hash.slice(3) : '';
+  const previewVersion = previewLocation.searchParams.get('v') || previewHashVersion || 'dev';
   const cssLink = document.createElement('link');
   cssLink.rel = 'stylesheet';
   cssLink.href = `./list-manager.css?v=${encodeURIComponent(previewVersion)}`;
@@ -65,7 +67,9 @@
 </div>
 
 <script type="module">
-  const version = new URL(window.location.href).searchParams.get('v') || 'dev';
+  const locationUrl = new URL(window.location.href);
+  const hashVersion = locationUrl.hash.startsWith('#v=') ? locationUrl.hash.slice(3) : '';
+  const version = locationUrl.searchParams.get('v') || hashVersion || 'dev';
   const load = (modulePath) => import(`${modulePath}?v=${encodeURIComponent(version)}`);
 
   const [

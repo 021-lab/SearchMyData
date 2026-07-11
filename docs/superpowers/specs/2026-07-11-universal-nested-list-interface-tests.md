@@ -11,7 +11,13 @@ The application must always have a working GitHub htmlpreview deployment. CI mus
 Every pushed version on the working branch must be reachable through GitHub htmlpreview:
 
 ```text
-https://htmlpreview.github.io/?https://raw.githubusercontent.com/021-lab/searchmydata/<branch>/<entrypoint-html>?v=<version-hash>
+https://htmlpreview.github.io/?https://raw.githubusercontent.com/<owner>/<repo>/<branch>/list-manager.html#v=<version-hash>
+```
+
+Example:
+
+```text
+https://htmlpreview.github.io/?https://raw.githubusercontent.com/021-lab/SearchMyData/codex-list-interface/list-manager.html#v=mrfxmgv6-cbwbiy
 ```
 
 For this branch the entrypoint is:
@@ -141,4 +147,3 @@ The tests must not pass by inspecting internal JavaScript state only. Internal s
 The deployed Playwright tests are the required CI gate for user-visible behavior.
 
 Module-level tests can still exist for interpreter/store/sync logic, but they are not a substitute for the deployed htmlpreview Playwright test. The deployed test is the proof that the current branch produces a working UI with fresh assets and correct rendering.
-

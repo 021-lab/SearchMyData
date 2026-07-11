@@ -27,7 +27,8 @@ jobs:
         run: |
           HASH=$(node scripts/prepare-preview.mjs)
           echo "hash=$HASH" >> "$GITHUB_OUTPUT"
-          echo "preview_url=https://htmlpreview.github.io/?https://raw.githubusercontent.com/021-lab/SearchMyData/${GITHUB_REF_NAME}/list-manager.html?v=$HASH" >> "$GITHUB_OUTPUT"
+          echo "preview_url=https://htmlpreview.github.io/?https://raw.githubusercontent.com/021-lab/SearchMyData/${GITHUB_REF_NAME}/list-manager.html#v=$HASH" >> "$GITHUB_OUTPUT"
+          echo "Preview URL: https://htmlpreview.github.io/?https://raw.githubusercontent.com/021-lab/SearchMyData/${GITHUB_REF_NAME}/list-manager.html#v=$HASH"
 
       - name: Verify raw assets
         run: |
