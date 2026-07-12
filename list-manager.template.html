@@ -29,19 +29,45 @@ __INLINE_CSS__
   <div class="toast" id="toast"></div>
   <button class="add-btn" id="add-btn" aria-label="Добавить задачу">+</button>
 
-  <div id="tag-panel"></div>
+  <div id="tag-panel" class="swipe-panel"></div>
 
-  <div id="drop-zone-panel">
-    <div class="panel-item" data-action="nest" style="background:#34c759"><span class="panel-icon">➕</span><span class="panel-label">Вложенный</span></div>
-    <div class="panel-item" data-action="view" style="background:#5ac8fa"><span class="panel-icon">👁</span><span class="panel-label">Просмотр</span></div>
-    <div class="panel-item" data-action="edit" style="background:#007aff"><span class="panel-icon">✏️</span><span class="panel-label">Изменить</span></div>
-    <div class="panel-item" data-action="delete" style="background:#ff3b30"><span class="panel-icon">🗑</span><span class="panel-label">Удалить</span></div>
-    <div class="panel-item" data-action="Open" style="background:#007aff"><span class="panel-icon">◯</span><span class="panel-label">Open</span></div>
-    <div class="panel-item" data-action="Done" style="background:#34c759"><span class="panel-icon">✓</span><span class="panel-label">Done</span></div>
-    <div class="panel-item" data-action="Focus" style="background:#ff9500"><span class="panel-icon">◎</span><span class="panel-label">Focus</span></div>
-    <div class="panel-item" data-action="Archive" style="background:#8e8e93"><span class="panel-icon">▣</span><span class="panel-label">Archive</span></div>
-    <div class="panel-item" data-action="Pause" style="background:#5856d6"><span class="panel-icon">Ⅱ</span><span class="panel-label">Pause</span></div>
-  </div>
+  <div id="drop-zone-panel" class="swipe-panel"></div>
+
+  <section class="task-page" id="task-page" aria-hidden="true">
+    <div class="task-page-bar">
+      <button class="task-page-close" id="task-page-close" type="button">Закрыть</button>
+      <h2 id="task-page-title">Задача</h2>
+      <button class="task-page-save" id="task-page-save" type="button">Сохранить</button>
+    </div>
+    <div class="task-page-body">
+      <label class="task-page-field">
+        <span>Название</span>
+        <input type="text" id="task-page-line1" maxlength="60">
+      </label>
+      <label class="task-page-field">
+        <span>Подпись</span>
+        <input type="text" id="task-page-line2" maxlength="80">
+      </label>
+      <label class="task-page-field">
+        <span>Статус</span>
+        <select id="task-page-status">
+          <option>Open</option>
+          <option>Done</option>
+          <option>Focus</option>
+          <option>Archive</option>
+          <option>Pause</option>
+        </select>
+      </label>
+      <section class="task-page-subtasks">
+        <h3>Подзадачи</h3>
+        <div id="task-page-subtasks"></div>
+        <div class="task-page-add-child">
+          <input type="text" id="task-page-child-input" placeholder="Новая подзадача" maxlength="60">
+          <button id="task-page-add-child" type="button">Добавить</button>
+        </div>
+      </section>
+    </div>
+  </section>
 
   <div class="modal-overlay" id="modal-overlay">
     <div class="modal">
