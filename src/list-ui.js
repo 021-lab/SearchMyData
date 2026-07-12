@@ -313,7 +313,6 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
     renderTaskPageSubtasks(itemId, state);
     taskPage.classList.add('open');
     taskPage.setAttribute('aria-hidden', 'false');
-    taskPageLine1.focus();
   }
 
   function closeTaskPage() {
