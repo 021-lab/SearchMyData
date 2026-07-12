@@ -42,6 +42,7 @@ export function createApp({ adapter, interpreter, renderer, store, sync, ui }) {
       ui.setGetState(() => state);
       ui.bindGlobal();
       render();
+      sync.start?.(() => state);
     },
     getState() {
       return state;

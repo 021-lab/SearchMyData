@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
 
+async function confirmModal(page) {
+  await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+  await page.locator('#input-line1').press('Enter');
+}
+
 async function triggerRightPanelAction(page, rowLocator, actionLabel) {
   await rowLocator.scrollIntoViewIfNeeded();
   const rowBox = await rowLocator.boundingBox();
@@ -28,10 +33,11 @@ test('preview app can create task, create subtask, and change status', async ({ 
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
   await expect(page.locator('#list-container')).toBeVisible();
+  await expect(page.locator('.list-item-wrapper').first()).toContainText('Молоко 3.2%');
 
   await page.getByRole('button', { name: 'Добавить задачу' }).click();
   await page.locator('#input-line1').fill(taskTitle);
-  await page.locator('#btn-confirm').click();
+  await confirmModal(page);
 
   const taskRow = page.locator('.list-item-wrapper', { hasText: taskTitle });
   await expect(taskRow).toContainText(taskTitle);
@@ -43,7 +49,7 @@ test('preview app can create task, create subtask, and change status', async ({ 
 
   await triggerRightPanelAction(page, taskRow.locator('.list-item'), 'Вложенный');
   await page.locator('#input-line1').fill(subtaskTitle);
-  await page.locator('#btn-confirm').click();
+  await confirmModal(page);
 
   const subtaskRow = page.locator('.list-item-wrapper', { hasText: subtaskTitle });
   await expect(subtaskRow).toContainText(subtaskTitle);
