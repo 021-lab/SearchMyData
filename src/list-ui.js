@@ -128,6 +128,24 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
     panelEl.classList.add('visible');
   }
 
+  function alignDefaultActionToAnchor(actions, anchorY) {
+    const defaultIndex = actions.findIndex((action) => action.default);
+    if (defaultIndex < 0) return { actions, defaultIndex: 0 };
+
+    const totalHeight = actions.length * PANEL_ITEM_HEIGHT;
+    const targetTop = anchorY - (defaultIndex * PANEL_ITEM_HEIGHT) - (PANEL_ITEM_HEIGHT / 2);
+    const top = Math.max(0, Math.min(targetTop, window.innerHeight - totalHeight));
+    const landedIndex = Math.max(0, Math.min(actions.length - 1, Math.floor((anchorY - top) / PANEL_ITEM_HEIGHT)));
+
+    if (landedIndex !== defaultIndex) {
+      const nextActions = [...actions];
+      [nextActions[defaultIndex], nextActions[landedIndex]] = [nextActions[landedIndex], nextActions[defaultIndex]];
+      return { actions: nextActions, defaultIndex: landedIndex };
+    }
+
+    return { actions, defaultIndex };
+  }
+
   function setActiveItem(panelEl, dy) {
     const items = [...panelEl.querySelectorAll('.panel-item')];
     if (!items.length) return null;
@@ -138,8 +156,9 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
   }
 
   function showDropPanel(anchorY, itemId) {
-    const actions = buildRightPanelActions(findItem(getState(), itemId));
-    const defaultIndex = Math.max(0, actions.findIndex((action) => action.default));
+    const aligned = alignDefaultActionToAnchor(buildRightPanelActions(findItem(getState(), itemId)), anchorY);
+    const actions = aligned.actions;
+    const defaultIndex = aligned.defaultIndex;
     renderPanel(dropPanel, actions);
     showPanel(dropPanel, anchorY, defaultIndex);
     dropAction = setActiveItem(dropPanel, 0);
