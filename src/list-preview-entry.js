@@ -23,6 +23,7 @@ async function bootstrapListManagerPreview() {
     rootPanel: document.getElementById('app-root'),
     header: document.querySelector('header'),
     viewToggleButton: document.getElementById('view-toggle-btn'),
+    frontierButton: document.getElementById('frontier-tab-btn'),
     undoButton: document.getElementById('undo-btn'),
     addButton: document.getElementById('add-btn'),
     container: document.getElementById('list-container'),

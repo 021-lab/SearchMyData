@@ -37,7 +37,7 @@ function deriveArrangedFromWrappers(wrappers) {
   });
 }
 
-export function createUI({ rootPanel, header, viewToggleButton, undoButton, addButton, container, toastEl, dropPanel, tagPanel, overlay, input1, input2, modalTitle, btnConfirm, btnCancel, viewContent, viewLine1, viewLine2, viewTagsEl, actionLogPanel, taskPage, taskPageClose, taskPageSave, taskPageTitle, taskPageLine1, taskPageLine2, taskPageStatus, taskPageSubtasks, taskPageChildInput, taskPageAddChild }) {
+export function createUI({ rootPanel, header, viewToggleButton, frontierButton, undoButton, addButton, container, toastEl, dropPanel, tagPanel, overlay, input1, input2, modalTitle, btnConfirm, btnCancel, viewContent, viewLine1, viewLine2, viewTagsEl, actionLogPanel, taskPage, taskPageClose, taskPageSave, taskPageTitle, taskPageLine1, taskPageLine2, taskPageStatus, taskPageSubtasks, taskPageChildInput, taskPageAddChild }) {
   let dispatchUserInput = () => {};
   let getState = () => ({ snapshot: { items: [] }, actionLog: [] });
   let boundGlobals = false;
@@ -416,6 +416,17 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
         command: wantsLog ? 'showActionLog' : 'showList',
         payload: {},
         source: 'view-toggle'
+      });
+    });
+
+    frontierButton?.addEventListener('click', () => {
+      const wantsFrontier = rootPanel.dataset.viewMode !== 'frontier';
+      dispatchUserInput({
+        actId: wantsFrontier ? 'frontier' : 'list',
+        actType: wantsFrontier ? 'tab' : 'list',
+        command: wantsFrontier ? 'showFrontier' : 'showList',
+        payload: {},
+        source: 'frontier-tab'
       });
     });
 
@@ -826,6 +837,7 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
         hideTagPanel();
         row.style.transform = '';
         actionBg.style.opacity = '0';
+        if (rootPanel.dataset.viewMode === 'frontier') return;
         startDrag(wrapper, curY, curX);
       }, 370);
     }, { passive: true });
@@ -861,6 +873,7 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
         hideTagPanel();
         row.style.transform = '';
         actionBg.style.opacity = '0';
+        if (rootPanel.dataset.viewMode === 'frontier') return;
         startDrag(wrapper, curY, curX);
       }, 370);
     });
@@ -885,6 +898,10 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
   function onRendered(state, viewMode) {
     rootPanel.dataset.viewMode = viewMode;
     viewToggleButton.textContent = viewMode === 'log' ? 'Список' : 'Журнал';
+    if (frontierButton) {
+      frontierButton.textContent = viewMode === 'frontier' ? 'Список' : 'Фронтир';
+      frontierButton.classList.toggle('active', viewMode === 'frontier');
+    }
   }
 
   return {
