@@ -103,8 +103,13 @@ export function calculateFrontier(tasks = []) {
     if (CLOSED_STATUSES.has(status)) return false;
     if (status === 'focus') focusHighlights.push(node.task);
 
+    const focusInsidePause = paused && status === 'focus';
     const insidePause = (paused && status !== 'focus') || status === 'pause';
     if (insidePause && !node.hasFocusInSubtree) return false;
+
+    if (!node.synthetic && focusInsidePause) {
+      frontier.push(node.task);
+    }
 
     const activeChildren = node.children.filter((child) => !CLOSED_STATUSES.has(normalizedStatus(child.task)));
     const focusedChildren = activeChildren.filter((child) => normalizedStatus(child.task) === 'focus');
@@ -115,12 +120,12 @@ export function calculateFrontier(tasks = []) {
       if (visit(child, insidePause)) descendantInFrontier = true;
     }
 
-    if (!node.synthetic && FRONTIER_STATUSES.has(status) && !descendantInFrontier) {
+    if (!node.synthetic && FRONTIER_STATUSES.has(status) && !descendantInFrontier && !focusInsidePause) {
       frontier.push(node.task);
       return true;
     }
 
-    return descendantInFrontier;
+    return focusInsidePause || descendantInFrontier;
   }
 
   visit(root, false);

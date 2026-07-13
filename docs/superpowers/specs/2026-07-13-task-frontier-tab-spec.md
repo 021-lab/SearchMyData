@@ -149,6 +149,7 @@ ROOT [open]
 ```text
 A1.1.2 [open]
 A2      [open]
+D1.1    [focus внутри pause]
 D1.1.1 [open]
 D2      [open]
 ```
@@ -166,7 +167,8 @@ D1.1 [focus внутри pause]
 - `A1.1.2` показывается как активный лист сфокусированной ветки.
 - `A1.2` и `A1.2.1` скрыты, потому что `A1.1` блокирует ветки братьев.
 - `A2` показывается, потому что его дети имеют только статусы `done` и `archive`.
-- `D1.1.1` показывается, потому что `focus` внутри `pause` сильнее паузы.
+- `D1.1` показывается, потому что `focus` внутри `pause` является самостоятельной точкой действия во фронтире.
+- `D1.1.1` тоже показывается, потому что активные потомки сфокусированной подветки продолжают участвовать во фронтире.
 - `D1.2` и `D1.2.1` скрыты паузой и фокусом соседней ветки.
 - `D2` показывается: пауза `D1` не блокирует её брата.
 - `E` и `E1` скрыты, потому что внутри паузы нет фокуса.
@@ -328,11 +330,20 @@ function calculateFrontier(tasks: Task[]): FrontierResult {
       focusHighlights.push(node);
     }
 
-    const insidePause = paused || node.status === "pause";
+    const focusInsidePause =
+      paused && node.status === "focus";
+
+    const insidePause =
+      (paused && node.status !== "focus") ||
+      node.status === "pause";
 
     // В паузе остаются только пути к focus и сфокусированные поддеревья
     if (insidePause && !node.hasFocusInSubtree) {
       return false;
+    }
+
+    if (!node.synthetic && focusInsidePause) {
+      frontier.push(node);
     }
 
     const activeChildren = node.children.filter(
@@ -362,12 +373,12 @@ function calculateFrontier(tasks: Task[]): FrontierResult {
       !node.synthetic &&
       (node.status === "open" || node.status === "focus");
 
-    if (canEnterFrontier && !descendantInFrontier) {
+    if (canEnterFrontier && !descendantInFrontier && !focusInsidePause) {
       frontier.push(node);
       return true;
     }
 
-    return descendantInFrontier;
+    return focusInsidePause || descendantInFrontier;
   }
 
   visit(root, false);
@@ -416,7 +427,9 @@ visit:     O(N)
 
 Сфокусированная задача считается активной. Поэтому она блокирует родителя так же, как `open`.
 
-Если у `focus` есть доступный активный потомок, во фронтир попадает потомок, а сама сфокусированная задача остаётся только в `focusHighlights`.
+Если у обычного `focus` есть доступный активный потомок, во фронтир попадает потомок, а сама сфокусированная задача остаётся только в `focusHighlights`.
+
+Исключение: если `focus` находится внутри `pause`, он сам тоже попадает во фронтир как точка входа в приостановленную ветку.
 
 Противоречия нет: фронтир показывает точку действия, а подсветка отдельно показывает контекст фокуса.
 

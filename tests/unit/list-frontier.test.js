@@ -32,7 +32,7 @@ describe('task frontier', () => {
       task('G', null, 'Archive', 50)
     ]);
 
-    expect(result.frontier.map((item) => item.id)).toEqual(['A1.1.2', 'A2', 'D1.1.1', 'D2']);
+    expect(result.frontier.map((item) => item.id)).toEqual(['A1.1.2', 'A2', 'D1.1', 'D1.1.1', 'D2']);
     expect(result.focusHighlights.map((item) => item.id)).toEqual(['A1.1', 'D1.1']);
   });
 

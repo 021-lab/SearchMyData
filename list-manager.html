@@ -1103,8 +1103,12 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
       const status = normalizedStatus(node.task || {});
       if (CLOSED_STATUSES.has(status)) return false;
       if (status === "focus") focusHighlights.push(node.task);
+      const focusInsidePause = paused && status === "focus";
       const insidePause = paused && status !== "focus" || status === "pause";
       if (insidePause && !node.hasFocusInSubtree) return false;
+      if (!node.synthetic && focusInsidePause) {
+        frontier.push(node.task);
+      }
       const activeChildren = node.children.filter((child) => !CLOSED_STATUSES.has(normalizedStatus(child.task)));
       const focusedChildren = activeChildren.filter((child) => normalizedStatus(child.task) === "focus");
       const childrenToVisit = focusedChildren.length ? focusedChildren : activeChildren;
@@ -1112,11 +1116,11 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
       for (const child of childrenToVisit) {
         if (visit(child, insidePause)) descendantInFrontier = true;
       }
-      if (!node.synthetic && FRONTIER_STATUSES.has(status) && !descendantInFrontier) {
+      if (!node.synthetic && FRONTIER_STATUSES.has(status) && !descendantInFrontier && !focusInsidePause) {
         frontier.push(node.task);
         return true;
       }
-      return descendantInFrontier;
+      return focusInsidePause || descendantInFrontier;
     }
     visit(root, false);
     return { frontier, focusHighlights };
