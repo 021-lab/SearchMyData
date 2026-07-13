@@ -1,5 +1,6 @@
 const AVAILABLE_TAGS = ['Важное', 'Срочно', 'Купить', 'Дом', 'Работа', 'Отложить'];
 const STATUS_ACTIONS = new Set(['Open', 'Done', 'Focus', 'Archive', 'Pause']);
+const PANEL_ITEM_HEIGHT = 72;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -36,7 +37,7 @@ function deriveArrangedFromWrappers(wrappers) {
   });
 }
 
-export function createUI({ rootPanel, header, viewToggleButton, undoButton, addButton, container, toastEl, dropPanel, tagPanel, overlay, input1, input2, modalTitle, btnConfirm, btnCancel, viewContent, viewLine1, viewLine2, viewTagsEl, actionLogPanel }) {
+export function createUI({ rootPanel, header, viewToggleButton, undoButton, addButton, container, toastEl, dropPanel, tagPanel, overlay, input1, input2, modalTitle, btnConfirm, btnCancel, viewContent, viewLine1, viewLine2, viewTagsEl, actionLogPanel, taskPage, taskPageClose, taskPageSave, taskPageTitle, taskPageLine1, taskPageLine2, taskPageStatus, taskPageSubtasks, taskPageChildInput, taskPageAddChild }) {
   let dispatchUserInput = () => {};
   let getState = () => ({ snapshot: { items: [] }, actionLog: [] });
   let boundGlobals = false;
@@ -51,6 +52,8 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
   let currentMouseGesture = null;
   let dropAction = null;
   let tagAction = null;
+  let taskPageOpen = false;
+  let taskPageTargetId = null;
 
   function showToast(message) {
     if (!toastEl) return;
@@ -68,31 +71,96 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
     getState = nextGetState;
   }
 
+  function buildRightPanelActions(item) {
+    const status = item?.status || 'Open';
+    return [
+      { id: 'done', label: 'Done', icon: '✓', color: '#34c759', kind: 'status', status: 'Done' },
+      { id: 'pause-toggle', label: status === 'Pause' ? 'Open' : 'Pause', icon: status === 'Pause' ? '◯' : 'Ⅱ', color: '#5856d6', kind: 'status', status: status === 'Pause' ? 'Open' : 'Pause' },
+      { id: 'focus-toggle', label: status === 'Focus' ? 'Open' : 'Focus', icon: status === 'Focus' ? '◯' : '◎', color: '#ff9500', kind: 'status', status: status === 'Focus' ? 'Open' : 'Focus' },
+      { id: 'archive', label: 'Archive', icon: '▣', color: '#8e8e93', kind: 'status', status: 'Archive', default: true },
+      { id: 'edit-page', label: 'Edit', icon: '✎', color: '#007aff', kind: 'editPage' }
+    ];
+  }
+
+  function buildTagPanelActions(item) {
+    const itemTags = item?.tags || [];
+    const notApplied = AVAILABLE_TAGS.filter((tag) => !itemTags.includes(tag));
+    const applied = AVAILABLE_TAGS.filter((tag) => itemTags.includes(tag));
+    return [...notApplied, ...applied].map((tag) => {
+      const isApplied = itemTags.includes(tag);
+      return {
+        id: `tag:${tag}`,
+        label: tag,
+        icon: isApplied ? '−' : '#',
+        color: isApplied ? '#636366' : '#5856d6',
+        kind: 'tag',
+        tag
+      };
+    });
+  }
+
+  function renderPanel(panelEl, actions) {
+    panelEl.innerHTML = '';
+    panelEl._actions = actions;
+    actions.forEach((action, index) => {
+      const div = document.createElement('div');
+      div.className = 'panel-item';
+      div.dataset.index = String(index);
+      div.dataset.action = action.id;
+      div.style.background = action.color;
+      div.innerHTML = `<span class="panel-icon">${escHtml(action.icon)}</span><span class="panel-label">${escHtml(action.label)}</span>`;
+      panelEl.appendChild(div);
+    });
+  }
+
   function hidePanel(panelEl) {
     panelEl.classList.remove('visible');
     panelEl.querySelectorAll('.panel-item').forEach((element) => element.classList.remove('active'));
   }
 
-  function showPanel(panelEl, anchorY) {
+  function showPanel(panelEl, anchorY, defaultIndex = 0) {
     const count = panelEl.querySelectorAll('.panel-item').length;
-    const totalHeight = count * 60;
-    const top = Math.max(0, Math.min(anchorY - totalHeight / 2, window.innerHeight - totalHeight));
+    const totalHeight = count * PANEL_ITEM_HEIGHT;
+    const targetTop = anchorY - (defaultIndex * PANEL_ITEM_HEIGHT) - (PANEL_ITEM_HEIGHT / 2);
+    const top = Math.max(0, Math.min(targetTop, window.innerHeight - totalHeight));
     panelEl.style.top = `${top}px`;
     panelEl._anchorY = anchorY;
     panelEl.classList.add('visible');
+  }
+
+  function alignDefaultActionToAnchor(actions, anchorY) {
+    const defaultIndex = actions.findIndex((action) => action.default);
+    if (defaultIndex < 0) return { actions, defaultIndex: 0 };
+
+    const totalHeight = actions.length * PANEL_ITEM_HEIGHT;
+    const targetTop = anchorY - (defaultIndex * PANEL_ITEM_HEIGHT) - (PANEL_ITEM_HEIGHT / 2);
+    const top = Math.max(0, Math.min(targetTop, window.innerHeight - totalHeight));
+    const landedIndex = Math.max(0, Math.min(actions.length - 1, Math.floor((anchorY - top) / PANEL_ITEM_HEIGHT)));
+
+    if (landedIndex !== defaultIndex) {
+      const nextActions = [...actions];
+      [nextActions[defaultIndex], nextActions[landedIndex]] = [nextActions[landedIndex], nextActions[defaultIndex]];
+      return { actions: nextActions, defaultIndex: landedIndex };
+    }
+
+    return { actions, defaultIndex };
   }
 
   function setActiveItem(panelEl, dy) {
     const items = [...panelEl.querySelectorAll('.panel-item')];
     if (!items.length) return null;
     const top = parseFloat(panelEl.style.top);
-    const index = Math.max(0, Math.min(items.length - 1, Math.floor((panelEl._anchorY + dy - top) / 60)));
+    const index = Math.max(0, Math.min(items.length - 1, Math.floor((panelEl._anchorY + dy - top) / PANEL_ITEM_HEIGHT)));
     items.forEach((element, currentIndex) => element.classList.toggle('active', currentIndex === index));
-    return items[index]?.dataset.action || null;
+    return panelEl._actions?.[index] || null;
   }
 
-  function showDropPanel(anchorY) {
-    showPanel(dropPanel, anchorY);
+  function showDropPanel(anchorY, itemId) {
+    const aligned = alignDefaultActionToAnchor(buildRightPanelActions(findItem(getState(), itemId)), anchorY);
+    const actions = aligned.actions;
+    const defaultIndex = aligned.defaultIndex;
+    renderPanel(dropPanel, actions);
+    showPanel(dropPanel, anchorY, defaultIndex);
     dropAction = setActiveItem(dropPanel, 0);
   }
 
@@ -102,23 +170,8 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
   }
 
   function showTagPanel(anchorY, itemId) {
-    const item = findItem(getState(), itemId);
-    const itemTags = item?.tags || [];
-    const notApplied = AVAILABLE_TAGS.filter((tag) => !itemTags.includes(tag));
-    const applied = AVAILABLE_TAGS.filter((tag) => itemTags.includes(tag));
-
-    tagPanel.innerHTML = '';
-    [...notApplied, ...applied].forEach((tag) => {
-      const isApplied = itemTags.includes(tag);
-      const div = document.createElement('div');
-      div.className = 'panel-item';
-      div.style.background = isApplied ? '#636366' : '#5856d6';
-      div.dataset.action = tag;
-      div.innerHTML = `<span class="panel-icon">${isApplied ? '−' : '#'}</span><span class="panel-label">${escHtml(tag)}</span>`;
-      tagPanel.appendChild(div);
-    });
-
-    showPanel(tagPanel, anchorY);
+    renderPanel(tagPanel, buildTagPanelActions(findItem(getState(), itemId)));
+    showPanel(tagPanel, anchorY, 0);
     tagAction = setActiveItem(tagPanel, 0);
   }
 
@@ -228,6 +281,96 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
     closeModal();
   }
 
+  function renderTaskPageSubtasks(itemId, state = getState()) {
+    const children = state.snapshot.items
+      .filter((item) => item.parentId === itemId)
+      .sort((left, right) => (left.order || 0) - (right.order || 0));
+
+    if (!children.length) {
+      taskPageSubtasks.innerHTML = '<div class="task-page-empty">Подзадач пока нет</div>';
+      return;
+    }
+
+    taskPageSubtasks.innerHTML = children.map((child) => `
+      <div class="task-page-subtask">
+        ${escHtml(child.line1)}
+        ${child.line2 ? `<small>${escHtml(child.line2)}</small>` : ''}
+      </div>
+    `).join('');
+  }
+
+  function openTaskPage(itemId, state = getState()) {
+    const item = findItem(state, itemId);
+    if (!item || !taskPage) return;
+
+    taskPageTargetId = itemId;
+    taskPageOpen = true;
+    taskPageTitle.textContent = item.line1 || 'Задача';
+    taskPageLine1.value = item.line1 || '';
+    taskPageLine2.value = item.line2 || '';
+    taskPageStatus.value = item.status || 'Open';
+    taskPageChildInput.value = '';
+    renderTaskPageSubtasks(itemId, state);
+    taskPage.classList.add('open');
+    taskPage.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeTaskPage() {
+    if (!taskPage) return;
+    taskPage.classList.remove('open');
+    taskPage.setAttribute('aria-hidden', 'true');
+    taskPageOpen = false;
+    taskPageTargetId = null;
+  }
+
+  function saveTaskPage() {
+    if (!taskPageTargetId) return;
+    const line1 = taskPageLine1.value.trim();
+    const line2 = taskPageLine2.value.trim();
+    const status = taskPageStatus.value;
+    if (!line1) {
+      taskPageLine1.focus();
+      return;
+    }
+
+    dispatchUserInput({
+      actId: taskPageTargetId,
+      actType: 'task',
+      command: 'editItem',
+      payload: { line1, line2 },
+      source: 'task-page-save'
+    });
+    dispatchUserInput({
+      actId: taskPageTargetId,
+      actType: 'task',
+      command: 'setStatus',
+      payload: { status },
+      source: 'task-page-save'
+    });
+    showToast('Сохранено');
+    closeTaskPage();
+  }
+
+  function addTaskPageChild() {
+    if (!taskPageTargetId) return;
+    const line1 = taskPageChildInput.value.trim();
+    if (!line1) {
+      taskPageChildInput.focus();
+      return;
+    }
+
+    dispatchUserInput({
+      actId: taskPageTargetId,
+      actType: 'task',
+      command: 'addChild',
+      payload: { line1, line2: '' },
+      source: 'task-page-add-child'
+    });
+    taskPageChildInput.value = '';
+    renderTaskPageSubtasks(taskPageTargetId);
+    showToast('Добавлен вложенный');
+  }
+
   function bindGlobal() {
     if (boundGlobals) return;
     boundGlobals = true;
@@ -244,6 +387,12 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
     [input1, input2].forEach((input) => input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') confirmModal();
     }));
+    taskPageClose?.addEventListener('click', closeTaskPage);
+    taskPageSave?.addEventListener('click', saveTaskPage);
+    taskPageAddChild?.addEventListener('click', addTaskPageChild);
+    taskPageChildInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') addTaskPageChild();
+    });
 
     undoButton.addEventListener('click', () => {
       if (!undoSnapshot) return;
@@ -524,32 +673,21 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
     }, 220);
   }
 
-  function execDrop(action, itemId) {
-    if (action === 'delete') {
-      dispatchUserInput({ actId: itemId, actType: 'task', command: 'deleteItem', payload: {}, source: 'right-swipe-panel' });
-      showToast('Элемент удалён');
+  function execPanelAction(action, itemId, source) {
+    if (!action) return;
+    if (action.kind === 'editPage') {
+      openTaskPage(itemId);
       return;
     }
-    if (action === 'edit') {
-      dispatchUserInput({ actId: itemId, actType: 'task', command: 'showEditModal', payload: {}, source: 'right-swipe-panel' });
+    if (action.kind === 'status' && STATUS_ACTIONS.has(action.status)) {
+      dispatchUserInput({ actId: itemId, actType: 'task', command: 'setStatus', payload: { status: action.status }, source });
+      showToast(`Статус: ${action.status}`);
       return;
     }
-    if (action === 'nest') {
-      dispatchUserInput({ actId: itemId, actType: 'task', command: 'showNestModal', payload: {}, source: 'right-swipe-panel' });
-      return;
+    if (action.kind === 'tag') {
+      dispatchUserInput({ actId: itemId, actType: 'task', command: 'setTags', payload: { tag: action.tag }, source });
+      showToast(`Тег: ${action.tag}`);
     }
-    if (action === 'view') {
-      dispatchUserInput({ actId: itemId, actType: 'task', command: 'viewItem', payload: {}, source: 'right-swipe-panel' });
-      return;
-    }
-    if (STATUS_ACTIONS.has(action)) {
-      dispatchUserInput({ actId: itemId, actType: 'task', command: 'setStatus', payload: { status: action }, source: 'right-swipe-panel' });
-      showToast(`Статус: ${action}`);
-    }
-  }
-
-  function execTag(tag, itemId) {
-    dispatchUserInput({ actId: itemId, actType: 'task', command: 'setTags', payload: { tag }, source: 'left-swipe-panel' });
   }
 
   function bindGesture(row, actionBg, itemId, wrapper) {
@@ -604,7 +742,7 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
         }
         if (!rdAnchor) {
           rdAnchor = row.getBoundingClientRect().top + row.offsetHeight / 2;
-          showDropPanel(rdAnchor);
+          showDropPanel(rdAnchor, itemId);
         }
         row.style.transform = `translate(${Math.min(dx, 110)}px, ${offsetY}px)`;
         actionBg.style.opacity = '0';
@@ -660,18 +798,17 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
 
       if (wasRight && dx > 30 && action) {
         if (isMouse) mouseSwipeDone = true;
-        execDrop(action, itemId);
+        execPanelAction(action, itemId, 'right-swipe-panel');
       } else if (wasLeft && dx < -30 && savedTagAction) {
         if (isMouse) mouseSwipeDone = true;
-        execTag(savedTagAction, itemId);
-        showToast(`Тег: ${savedTagAction}`);
+        execPanelAction(savedTagAction, itemId, 'left-swipe-panel');
       } else if (!isMouse && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
         dispatchUserInput({ actId: itemId, actType: 'task', command: 'toggleCollapse', payload: {}, source: 'tap' });
       }
     };
 
     row.addEventListener('touchstart', (event) => {
-      if (dragState || modalOpen) return;
+      if (dragState || modalOpen || taskPageOpen) return;
       const touch = event.touches[0];
       startX = curX = touch.clientX;
       startY = curY = touch.clientY;
@@ -686,6 +823,7 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
         active = false;
         rdAnchor = null;
         hideDrop();
+        hideTagPanel();
         row.style.transform = '';
         actionBg.style.opacity = '0';
         startDrag(wrapper, curY, curX);
@@ -705,7 +843,7 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
 
     row.addEventListener('mousedown', (event) => {
       if (Date.now() - lastTouchEndTime < 500) return;
-      if (dragState || modalOpen || event.button !== 0) return;
+      if (dragState || modalOpen || taskPageOpen || event.button !== 0) return;
       startX = curX = event.clientX;
       startY = curY = event.clientY;
       active = true;
@@ -720,6 +858,7 @@ export function createUI({ rootPanel, header, viewToggleButton, undoButton, addB
         active = false;
         rdAnchor = null;
         hideDrop();
+        hideTagPanel();
         row.style.transform = '';
         actionBg.style.opacity = '0';
         startDrag(wrapper, curY, curX);

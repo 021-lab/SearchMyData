@@ -39,7 +39,17 @@ async function bootstrapListManagerPreview() {
     viewLine1: document.getElementById('view-line1'),
     viewLine2: document.getElementById('view-line2'),
     viewTagsEl: document.getElementById('view-tags'),
-    actionLogPanel: document.getElementById('action-log-panel')
+    actionLogPanel: document.getElementById('action-log-panel'),
+    taskPage: document.getElementById('task-page'),
+    taskPageClose: document.getElementById('task-page-close'),
+    taskPageSave: document.getElementById('task-page-save'),
+    taskPageTitle: document.getElementById('task-page-title'),
+    taskPageLine1: document.getElementById('task-page-line1'),
+    taskPageLine2: document.getElementById('task-page-line2'),
+    taskPageStatus: document.getElementById('task-page-status'),
+    taskPageSubtasks: document.getElementById('task-page-subtasks'),
+    taskPageChildInput: document.getElementById('task-page-child-input'),
+    taskPageAddChild: document.getElementById('task-page-add-child')
   });
 
   const renderer = createRenderer({
