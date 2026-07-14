@@ -11,8 +11,11 @@ export const seedState = {
       { id: 'goldn', parentId: 'apple', order: 10, status: 'Open', line1: 'Голден', line2: '500 г', collapsed: false, tags: [] },
       { id: 'grnsm', parentId: 'apple', order: 20, status: 'Open', line1: 'Гренни Смит', line2: '400 г', collapsed: false, tags: [] },
       { id: 'fudji', parentId: 'apple', order: 30, status: 'Pause', line1: 'Фуджи', line2: '300 г', collapsed: false, tags: [] },
+      { id: 'pozzd', parentId: 'fudji', order: 10, status: 'Done', line1: 'Позззд', line2: '', collapsed: false, tags: ['Дом'] },
+      { id: 'voovo', parentId: 'pozzd', order: 10, status: 'Open', line1: 'Воовоага', line2: '', collapsed: false, tags: [] },
+      { id: 'first', parentId: 'voovo', order: 10, status: 'Focus', line1: 'Первый позад', line2: '', collapsed: false, tags: ['Купить'] },
       { id: 'cofee', parentId: null, order: 40, status: 'Open', line1: 'Кофе', line2: 'Арабика, зерно, 250 г', collapsed: false, tags: [] },
-      { id: 'tooth', parentId: null, order: 50, status: 'Done', line1: 'Зубная паста', line2: '', collapsed: false, tags: ['Дом'] },
+      { id: 'tooth', parentId: null, order: 50, status: 'Open', line1: 'Зубная пастааоаоа', line2: '', collapsed: false, tags: ['Дом', 'Важное'] },
       { id: 'shamp', parentId: null, order: 60, status: 'Archive', line1: 'Шампунь', line2: 'Для нормальных волос', collapsed: false, tags: [] }
     ]
   },

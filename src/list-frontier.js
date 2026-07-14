@@ -100,7 +100,7 @@ export function calculateFrontier(tasks = []) {
   function visit(node, paused) {
     const status = normalizedStatus(node.task || {});
 
-    if (CLOSED_STATUSES.has(status)) return false;
+    if (CLOSED_STATUSES.has(status) && !node.hasFocusInSubtree) return false;
     if (status === 'focus') focusHighlights.push(node.task);
 
     const focusInsidePause = paused && status === 'focus';
@@ -111,7 +111,9 @@ export function calculateFrontier(tasks = []) {
       frontier.push(node.task);
     }
 
-    const activeChildren = node.children.filter((child) => !CLOSED_STATUSES.has(normalizedStatus(child.task)));
+    const activeChildren = node.children.filter((child) => (
+      !CLOSED_STATUSES.has(normalizedStatus(child.task)) || child.hasFocusInSubtree
+    ));
     const focusedChildren = activeChildren.filter((child) => normalizedStatus(child.task) === 'focus');
     const childrenToVisit = focusedChildren.length ? focusedChildren : activeChildren;
 

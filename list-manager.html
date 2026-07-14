@@ -588,8 +588,11 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
         { id: "goldn", parentId: "apple", order: 10, status: "Open", line1: "\u0413\u043E\u043B\u0434\u0435\u043D", line2: "500 \u0433", collapsed: false, tags: [] },
         { id: "grnsm", parentId: "apple", order: 20, status: "Open", line1: "\u0413\u0440\u0435\u043D\u043D\u0438 \u0421\u043C\u0438\u0442", line2: "400 \u0433", collapsed: false, tags: [] },
         { id: "fudji", parentId: "apple", order: 30, status: "Pause", line1: "\u0424\u0443\u0434\u0436\u0438", line2: "300 \u0433", collapsed: false, tags: [] },
+        { id: "pozzd", parentId: "fudji", order: 10, status: "Done", line1: "\u041F\u043E\u0437\u0437\u0437\u0434", line2: "", collapsed: false, tags: ["\u0414\u043E\u043C"] },
+        { id: "voovo", parentId: "pozzd", order: 10, status: "Open", line1: "\u0412\u043E\u043E\u0432\u043E\u0430\u0433\u0430", line2: "", collapsed: false, tags: [] },
+        { id: "first", parentId: "voovo", order: 10, status: "Focus", line1: "\u041F\u0435\u0440\u0432\u044B\u0439 \u043F\u043E\u0437\u0430\u0434", line2: "", collapsed: false, tags: ["\u041A\u0443\u043F\u0438\u0442\u044C"] },
         { id: "cofee", parentId: null, order: 40, status: "Open", line1: "\u041A\u043E\u0444\u0435", line2: "\u0410\u0440\u0430\u0431\u0438\u043A\u0430, \u0437\u0435\u0440\u043D\u043E, 250 \u0433", collapsed: false, tags: [] },
-        { id: "tooth", parentId: null, order: 50, status: "Done", line1: "\u0417\u0443\u0431\u043D\u0430\u044F \u043F\u0430\u0441\u0442\u0430", line2: "", collapsed: false, tags: ["\u0414\u043E\u043C"] },
+        { id: "tooth", parentId: null, order: 50, status: "Open", line1: "\u0417\u0443\u0431\u043D\u0430\u044F \u043F\u0430\u0441\u0442\u0430\u0430\u043E\u0430\u043E\u0430", line2: "", collapsed: false, tags: ["\u0414\u043E\u043C", "\u0412\u0430\u0436\u043D\u043E\u0435"] },
         { id: "shamp", parentId: null, order: 60, status: "Archive", line1: "\u0428\u0430\u043C\u043F\u0443\u043D\u044C", line2: "\u0414\u043B\u044F \u043D\u043E\u0440\u043C\u0430\u043B\u044C\u043D\u044B\u0445 \u0432\u043E\u043B\u043E\u0441", collapsed: false, tags: [] }
       ]
     },
@@ -1101,7 +1104,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
     const focusHighlights = [];
     function visit(node, paused) {
       const status = normalizedStatus(node.task || {});
-      if (CLOSED_STATUSES.has(status)) return false;
+      if (CLOSED_STATUSES.has(status) && !node.hasFocusInSubtree) return false;
       if (status === "focus") focusHighlights.push(node.task);
       const focusInsidePause = paused && status === "focus";
       const insidePause = paused && status !== "focus" || status === "pause";
@@ -1109,7 +1112,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
       if (!node.synthetic && focusInsidePause) {
         frontier.push(node.task);
       }
-      const activeChildren = node.children.filter((child) => !CLOSED_STATUSES.has(normalizedStatus(child.task)));
+      const activeChildren = node.children.filter((child) => !CLOSED_STATUSES.has(normalizedStatus(child.task)) || child.hasFocusInSubtree);
       const focusedChildren = activeChildren.filter((child) => normalizedStatus(child.task) === "focus");
       const childrenToVisit = focusedChildren.length ? focusedChildren : activeChildren;
       let descendantInFrontier = false;

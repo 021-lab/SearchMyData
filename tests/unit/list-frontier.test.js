@@ -51,6 +51,19 @@ describe('task frontier', () => {
     expect(result.focusHighlights.map((item) => item.id)).toEqual(['A', 'B']);
   });
 
+  test('allows focus below closed ancestors while keeping closed ancestors out of frontier', () => {
+    const result = calculateFrontier([
+      task('apple', null, 'Open', 10),
+      task('fudji', 'apple', 'Pause', 10),
+      task('done-parent', 'fudji', 'Done', 10),
+      task('open-bridge', 'done-parent', 'Open', 10),
+      task('first-backlog', 'open-bridge', 'Focus', 10)
+    ]);
+
+    expect(result.frontier.map((item) => item.id)).toEqual(['first-backlog']);
+    expect(result.focusHighlights.map((item) => item.id)).toEqual(['first-backlog']);
+  });
+
   test('throws on missing parent and duplicate task ids', () => {
     expect(() => calculateFrontier([task('A', 'missing', 'Open')])).toThrow(/parent/i);
     expect(() => calculateFrontier([
