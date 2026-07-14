@@ -32,6 +32,9 @@ function statusColor(status) {
 }
 
 export function createRenderer({ container, actionLogPanel, actionLogList, rootPanel, emptyStateLabel, bindRow, bindGlobal, onRendered } = {}) {
+  const expandedFrontierParents = new Set();
+  let lastState = null;
+
   function renderActionLog(actionLog) {
     if (!actionLogList) return;
     actionLogList.innerHTML = '';
@@ -50,7 +53,7 @@ export function createRenderer({ container, actionLogPanel, actionLogList, rootP
     }
   }
 
-  function renderRow({ actionBgClass = 'del', fragment, hasChildren, hidden = false, index, item, level }) {
+  function renderRow({ actionBgClass = 'del', fragment, hasChildren, hidden = false, index, item, level, onRowClick = null }) {
     const wrapper = document.createElement('div');
     wrapper.className = 'list-item-wrapper';
     wrapper.dataset.id = item.id;
@@ -88,23 +91,35 @@ export function createRenderer({ container, actionLogPanel, actionLogList, rootP
     fragment.appendChild(wrapper);
 
     if (typeof bindRow === 'function') bindRow({ actionBg, item, level, row, wrapper });
+    if (typeof onRowClick === 'function') row.addEventListener('click', onRowClick);
   }
 
-  function itemDepth(item, itemById) {
-    let level = 0;
-    let parentId = item.parentId || null;
-    const seen = new Set([item.id]);
+  function renderFrontierParentRow({ fragment, parent }) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'list-item-wrapper frontier-parent-wrapper';
+    wrapper.dataset.id = `parent:${parent.id}`;
+    wrapper.dataset.actId = parent.id;
+    wrapper.dataset.actType = 'task-parent-context';
+    wrapper.dataset.level = '0';
+    wrapper.style.marginLeft = '0px';
 
-    while (parentId) {
-      if (seen.has(parentId)) break;
-      seen.add(parentId);
-      const parent = itemById.get(parentId);
-      if (!parent) break;
-      level += 1;
-      parentId = parent.parentId || null;
-    }
+    const row = document.createElement('div');
+    row.className = 'list-item frontier-parent-item';
+    row.innerHTML = `
+      <div class="item-head">
+        <div class="item-copy">
+          <div class="item-line1">${escHtml(parent.line1)}</div>
+          ${parent.line2 ? `<div class="item-line2">${escHtml(parent.line2)}</div>` : ''}
+          ${parent.tags?.length ? `<div class="item-tags">${parent.tags.map((tag) => `<span class="item-tag">${escHtml(tag)}</span>`).join('')}</div>` : ''}
+        </div>
+        <div class="item-side">
+          <span class="status-badge" style="--badge-color:${statusColor(parent.status)}">${escHtml(parent.status)}</span>
+        </div>
+      </div>
+    `;
 
-    return level;
+    wrapper.appendChild(row);
+    fragment.appendChild(wrapper);
   }
 
   function renderFrontier(state) {
@@ -139,13 +154,25 @@ export function createRenderer({ container, actionLogPanel, actionLogList, rootP
     }
 
     result.frontier.forEach((item, position) => {
+      const parent = item.parentId ? itemById.get(item.parentId) : null;
+      const parentExpanded = expandedFrontierParents.has(item.id) && parent;
+
+      if (parentExpanded) {
+        renderFrontierParentRow({ fragment, parent });
+      }
+
       renderRow({
         actionBgClass: focusIds.has(item.id) ? 'focus' : 'del',
         fragment,
         hasChildren: childIds.has(item.id),
         index: position + 1,
         item,
-        level: itemDepth(item, itemById)
+        level: parentExpanded ? 1 : 0,
+        onRowClick: parent ? () => {
+          if (expandedFrontierParents.has(item.id)) expandedFrontierParents.delete(item.id);
+          else expandedFrontierParents.add(item.id);
+          render(lastState || state, 'frontier');
+        } : null
       });
     });
 
@@ -154,6 +181,7 @@ export function createRenderer({ container, actionLogPanel, actionLogList, rootP
 
   function render(state, viewMode = 'list') {
     if (!container) return;
+    lastState = state;
 
     if (rootPanel) rootPanel.dataset.viewMode = viewMode;
     if (actionLogPanel) actionLogPanel.hidden = viewMode !== 'log';

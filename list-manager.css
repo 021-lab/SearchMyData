@@ -97,6 +97,28 @@ header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
   font-weight: 800;
 }
 
+.frontier-parent-wrapper {
+  margin-bottom: 0;
+}
+
+.frontier-parent-item {
+  background: #f8f9fb;
+  border-top: 1px solid #eceef3;
+  color: #6f7480;
+}
+
+.frontier-parent-item .item-line1 {
+  color: #6f7480;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.frontier-parent-item .item-line1::before {
+  content: "Родитель: ";
+  color: #a0a5ad;
+  font-weight: 800;
+}
+
 /* ── Swipe action bg ── */
 .list-item-wrapper {
   position: relative;

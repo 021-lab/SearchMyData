@@ -105,6 +105,28 @@ header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
   font-weight: 800;
 }
 
+.frontier-parent-wrapper {
+  margin-bottom: 0;
+}
+
+.frontier-parent-item {
+  background: #f8f9fb;
+  border-top: 1px solid #eceef3;
+  color: #6f7480;
+}
+
+.frontier-parent-item .item-line1 {
+  color: #6f7480;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.frontier-parent-item .item-line1::before {
+  content: "Родитель: ";
+  color: #a0a5ad;
+  font-weight: 800;
+}
+
 /* ── Swipe action bg ── */
 .list-item-wrapper {
   position: relative;
@@ -1153,6 +1175,8 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
     return "#007aff";
   }
   function createRenderer({ container, actionLogPanel, actionLogList, rootPanel, emptyStateLabel, bindRow, bindGlobal, onRendered } = {}) {
+    const expandedFrontierParents = /* @__PURE__ */ new Set();
+    let lastState = null;
     function renderActionLog(actionLog) {
       if (!actionLogList) return;
       actionLogList.innerHTML = "";
@@ -1169,7 +1193,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
         actionLogList.appendChild(row);
       }
     }
-    function renderRow({ actionBgClass = "del", fragment, hasChildren, hidden = false, index, item, level }) {
+    function renderRow({ actionBgClass = "del", fragment, hasChildren, hidden = false, index, item, level, onRowClick = null }) {
       const wrapper = document.createElement("div");
       wrapper.className = "list-item-wrapper";
       wrapper.dataset.id = item.id;
@@ -1203,20 +1227,32 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
       wrapper.appendChild(row);
       fragment.appendChild(wrapper);
       if (typeof bindRow === "function") bindRow({ actionBg, item, level, row, wrapper });
+      if (typeof onRowClick === "function") row.addEventListener("click", onRowClick);
     }
-    function itemDepth(item, itemById) {
-      let level = 0;
-      let parentId = item.parentId || null;
-      const seen = /* @__PURE__ */ new Set([item.id]);
-      while (parentId) {
-        if (seen.has(parentId)) break;
-        seen.add(parentId);
-        const parent = itemById.get(parentId);
-        if (!parent) break;
-        level += 1;
-        parentId = parent.parentId || null;
-      }
-      return level;
+    function renderFrontierParentRow({ fragment, parent }) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "list-item-wrapper frontier-parent-wrapper";
+      wrapper.dataset.id = `parent:${parent.id}`;
+      wrapper.dataset.actId = parent.id;
+      wrapper.dataset.actType = "task-parent-context";
+      wrapper.dataset.level = "0";
+      wrapper.style.marginLeft = "0px";
+      const row = document.createElement("div");
+      row.className = "list-item frontier-parent-item";
+      row.innerHTML = `
+      <div class="item-head">
+        <div class="item-copy">
+          <div class="item-line1">${escHtml(parent.line1)}</div>
+          ${parent.line2 ? `<div class="item-line2">${escHtml(parent.line2)}</div>` : ""}
+          ${parent.tags?.length ? `<div class="item-tags">${parent.tags.map((tag) => `<span class="item-tag">${escHtml(tag)}</span>`).join("")}</div>` : ""}
+        </div>
+        <div class="item-side">
+          <span class="status-badge" style="--badge-color:${statusColor(parent.status)}">${escHtml(parent.status)}</span>
+        </div>
+      </div>
+    `;
+      wrapper.appendChild(row);
+      fragment.appendChild(wrapper);
     }
     function renderFrontier(state) {
       const items = state.snapshot.items || [];
@@ -1245,19 +1281,30 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
         fragment.appendChild(focusStrip);
       }
       result.frontier.forEach((item, position) => {
+        const parent = item.parentId ? itemById.get(item.parentId) : null;
+        const parentExpanded = expandedFrontierParents.has(item.id) && parent;
+        if (parentExpanded) {
+          renderFrontierParentRow({ fragment, parent });
+        }
         renderRow({
           actionBgClass: focusIds.has(item.id) ? "focus" : "del",
           fragment,
           hasChildren: childIds.has(item.id),
           index: position + 1,
           item,
-          level: itemDepth(item, itemById)
+          level: parentExpanded ? 1 : 0,
+          onRowClick: parent ? () => {
+            if (expandedFrontierParents.has(item.id)) expandedFrontierParents.delete(item.id);
+            else expandedFrontierParents.add(item.id);
+            render(lastState || state, "frontier");
+          } : null
         });
       });
       container.appendChild(fragment);
     }
     function render(state, viewMode = "list") {
       if (!container) return;
+      lastState = state;
       if (rootPanel) rootPanel.dataset.viewMode = viewMode;
       if (actionLogPanel) actionLogPanel.hidden = viewMode !== "log";
       if (container) container.hidden = viewMode === "log";
@@ -2120,7 +2167,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
         } else if (wasLeft && dx < -30 && savedTagAction) {
           if (isMouse) mouseSwipeDone = true;
           execPanelAction(savedTagAction, itemId, "left-swipe-panel");
-        } else if (!isMouse && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+        } else if (!isMouse && Math.abs(dx) < 10 && Math.abs(dy) < 10 && rootPanel.dataset.viewMode !== "frontier") {
           dispatchUserInput({ actId: itemId, actType: "task", command: "toggleCollapse", payload: {}, source: "tap" });
         }
       };
@@ -2187,6 +2234,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
           mouseSwipeDone = false;
           return;
         }
+        if (rootPanel.dataset.viewMode === "frontier") return;
         dispatchUserInput({ actId: itemId, actType: "task", command: "toggleCollapse", payload: {}, source: "click" });
       });
     }

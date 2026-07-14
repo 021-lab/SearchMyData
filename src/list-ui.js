@@ -813,7 +813,7 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
       } else if (wasLeft && dx < -30 && savedTagAction) {
         if (isMouse) mouseSwipeDone = true;
         execPanelAction(savedTagAction, itemId, 'left-swipe-panel');
-      } else if (!isMouse && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+      } else if (!isMouse && Math.abs(dx) < 10 && Math.abs(dy) < 10 && rootPanel.dataset.viewMode !== 'frontier') {
         dispatchUserInput({ actId: itemId, actType: 'task', command: 'toggleCollapse', payload: {}, source: 'tap' });
       }
     };
@@ -885,6 +885,7 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
         mouseSwipeDone = false;
         return;
       }
+      if (rootPanel.dataset.viewMode === 'frontier') return;
       dispatchUserInput({ actId: itemId, actType: 'task', command: 'toggleCollapse', payload: {}, source: 'click' });
     });
   }
