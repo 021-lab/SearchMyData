@@ -1281,8 +1281,14 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
         fragment.appendChild(focusStrip);
       }
       result.frontier.forEach((item, position) => {
-        const parent = item.parentId ? itemById.get(item.parentId) : null;
-        const parentExpanded = expandedFrontierParents.has(item.id) && parent;
+        const parent = item.parentId ? itemById.get(item.parentId) : {
+          id: "__root__",
+          status: "Open",
+          line1: "\u041C\u043E\u0439 \u0441\u043F\u0438\u0441\u043E\u043A",
+          line2: "",
+          tags: []
+        };
+        const parentExpanded = expandedFrontierParents.has(item.id);
         if (parentExpanded) {
           renderFrontierParentRow({ fragment, parent });
         }

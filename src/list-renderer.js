@@ -140,7 +140,7 @@ export function createRenderer({ container, actionLogPanel, actionLogList, rootP
       return;
     }
 
-    const focusIds = new Set(result.focusHighlights.map((item) => item.id));
+const focusIds = new Set(result.focusHighlights.map((item) => item.id));
     const fragment = document.createDocumentFragment();
 
     if (result.focusHighlights.length) {
@@ -154,8 +154,14 @@ export function createRenderer({ container, actionLogPanel, actionLogList, rootP
     }
 
     result.frontier.forEach((item, position) => {
-      const parent = item.parentId ? itemById.get(item.parentId) : null;
-      const parentExpanded = expandedFrontierParents.has(item.id) && parent;
+      const parent = item.parentId ? itemById.get(item.parentId) : {
+        id: '__root__',
+        status: 'Open',
+        line1: 'Мой список',
+        line2: '',
+        tags: []
+      };
+      const parentExpanded = expandedFrontierParents.has(item.id);
 
       if (parentExpanded) {
         renderFrontierParentRow({ fragment, parent });

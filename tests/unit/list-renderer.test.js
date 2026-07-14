@@ -128,4 +128,32 @@ describe('list renderer', () => {
     expect(document.querySelector('.frontier-parent-wrapper')).toBeNull();
     expect(document.querySelector('[data-id="child"]').style.marginLeft).toBe('0px');
   });
+
+  test('shows synthetic list parent for root-level frontier tasks', () => {
+    document.body.innerHTML = `
+      <div id="root"></div>
+      <div id="list-container"></div>
+      <div id="action-log-panel"></div>
+    `;
+
+    const renderer = createRenderer({
+      rootPanel: document.getElementById('root'),
+      container: document.getElementById('list-container'),
+      actionLogPanel: document.getElementById('action-log-panel')
+    });
+
+    renderer.render({
+      snapshot: {
+        items: [
+          { id: 'root-task', parentId: null, order: 10, status: 'Open', line1: 'Root frontier task', line2: '', tags: [], collapsed: false }
+        ]
+      },
+      actionLog: []
+    }, 'frontier');
+
+    document.querySelector('[data-id="root-task"] .list-item').click();
+
+    expect(document.querySelector('.frontier-parent-wrapper')?.textContent).toContain('Мой список');
+    expect(document.querySelector('[data-id="root-task"]').style.marginLeft).toBe('24px');
+  });
 });
