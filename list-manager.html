@@ -51,7 +51,8 @@ header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
 #undo-btn:active { background: #e0e0e0; }
 #undo-btn:disabled { opacity: 0.3; pointer-events: none; }
 
-#view-toggle-btn {
+#view-toggle-btn,
+.header-tab-btn {
   flex-shrink: 0;
   min-width: 88px;
   height: 40px;
@@ -68,9 +69,63 @@ header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
   transition: background 0.15s, transform 0.1s, color 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
-#view-toggle-btn:active { transform: scale(0.96); background: #e0e0e0; }
+#view-toggle-btn:active,
+.header-tab-btn:active { transform: scale(0.96); background: #e0e0e0; }
+.header-tab-btn.active {
+  background: #1a1a2e;
+  color: #fff;
+}
 
 #list-container { padding: 12px 0 88px; position: relative; }
+
+.frontier-focus-strip {
+  margin: 0 12px 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff7e8;
+  border: 1px solid #ffd79a;
+  color: #8a4b00;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.frontier-focus-label {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.frontier-focus-chip {
+  background: #ff9500;
+  color: #fff;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.frontier-parent-wrapper {
+  margin-bottom: 0;
+}
+
+.frontier-parent-item {
+  background: #f8f9fb;
+  border-top: 1px solid #eceef3;
+  color: #6f7480;
+}
+
+.frontier-parent-item .item-line1 {
+  color: #6f7480;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.frontier-parent-item .item-line1::before {
+  content: "Родитель: ";
+  color: #a0a5ad;
+  font-weight: 800;
+}
 
 /* ── Swipe action bg ── */
 .list-item-wrapper {
@@ -464,6 +519,7 @@ header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
   <header>
     <button id="undo-btn" disabled title="Отменить последнее перетаскивание">↩</button>
     <h1>Мой список</h1>
+    <button id="frontier-tab-btn" class="header-tab-btn" data-act-id="frontier" data-act-type="tab" title="Показать фронтир задач">Фронтир</button>
     <button id="view-toggle-btn" title="Переключить вид">Журнал</button>
   </header>
 
@@ -554,8 +610,11 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
         { id: "goldn", parentId: "apple", order: 10, status: "Open", line1: "\u0413\u043E\u043B\u0434\u0435\u043D", line2: "500 \u0433", collapsed: false, tags: [] },
         { id: "grnsm", parentId: "apple", order: 20, status: "Open", line1: "\u0413\u0440\u0435\u043D\u043D\u0438 \u0421\u043C\u0438\u0442", line2: "400 \u0433", collapsed: false, tags: [] },
         { id: "fudji", parentId: "apple", order: 30, status: "Pause", line1: "\u0424\u0443\u0434\u0436\u0438", line2: "300 \u0433", collapsed: false, tags: [] },
+        { id: "pozzd", parentId: "fudji", order: 10, status: "Done", line1: "\u041F\u043E\u0437\u0437\u0437\u0434", line2: "", collapsed: false, tags: ["\u0414\u043E\u043C"] },
+        { id: "voovo", parentId: "pozzd", order: 10, status: "Open", line1: "\u0412\u043E\u043E\u0432\u043E\u0430\u0433\u0430", line2: "", collapsed: false, tags: [] },
+        { id: "first", parentId: "voovo", order: 10, status: "Focus", line1: "\u041F\u0435\u0440\u0432\u044B\u0439 \u043F\u043E\u0437\u0430\u0434", line2: "", collapsed: false, tags: ["\u041A\u0443\u043F\u0438\u0442\u044C"] },
         { id: "cofee", parentId: null, order: 40, status: "Open", line1: "\u041A\u043E\u0444\u0435", line2: "\u0410\u0440\u0430\u0431\u0438\u043A\u0430, \u0437\u0435\u0440\u043D\u043E, 250 \u0433", collapsed: false, tags: [] },
-        { id: "tooth", parentId: null, order: 50, status: "Done", line1: "\u0417\u0443\u0431\u043D\u0430\u044F \u043F\u0430\u0441\u0442\u0430", line2: "", collapsed: false, tags: ["\u0414\u043E\u043C"] },
+        { id: "tooth", parentId: null, order: 50, status: "Open", line1: "\u0417\u0443\u0431\u043D\u0430\u044F \u043F\u0430\u0441\u0442\u0430\u0430\u043E\u0430\u043E\u0430", line2: "", collapsed: false, tags: ["\u0414\u043E\u043C", "\u0412\u0430\u0436\u043D\u043E\u0435"] },
         { id: "shamp", parentId: null, order: 60, status: "Archive", line1: "\u0428\u0430\u043C\u043F\u0443\u043D\u044C", line2: "\u0414\u043B\u044F \u043D\u043E\u0440\u043C\u0430\u043B\u044C\u043D\u044B\u0445 \u0432\u043E\u043B\u043E\u0441", collapsed: false, tags: [] }
       ]
     },
@@ -894,8 +953,12 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
         let patch = [];
         let actionLogEntry = null;
         const payload = input.payload || {};
-        if (input.command === "showActionLog" || input.command === "showList") {
-          return { patch: [], actionLogEntry: null, viewMode: input.command === "showActionLog" ? "log" : "list" };
+        if (input.command === "showActionLog" || input.command === "showList" || input.command === "showFrontier") {
+          return {
+            patch: [],
+            actionLogEntry: null,
+            viewMode: input.command === "showActionLog" ? "log" : input.command === "showFrontier" ? "frontier" : "list"
+          };
         }
         if (input.command === "showAddModal" || input.command === "showEditModal" || input.command === "showNestModal" || input.command === "viewItem") {
           return {
@@ -982,6 +1045,112 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
     };
   }
 
+  // src/list-frontier.js
+  var CLOSED_STATUSES = /* @__PURE__ */ new Set(["done", "archive"]);
+  var FRONTIER_STATUSES = /* @__PURE__ */ new Set(["open", "focus"]);
+  function normalizedStatus(task) {
+    return String(task.status || "").toLowerCase();
+  }
+  function sortByOrder(left, right) {
+    return (left.task.order || 0) - (right.task.order || 0);
+  }
+  function createNode(task) {
+    return {
+      id: task.id,
+      parentId: task.parentId || null,
+      task,
+      children: [],
+      hasFocusInSubtree: false,
+      synthetic: false
+    };
+  }
+  function buildTree(tasks) {
+    const nodes = /* @__PURE__ */ new Map();
+    for (const task of tasks || []) {
+      if (nodes.has(task.id)) throw new Error(`Duplicate task id: ${task.id}`);
+      nodes.set(task.id, createNode(task));
+    }
+    const root = {
+      id: "__root__",
+      parentId: null,
+      task: null,
+      children: [],
+      hasFocusInSubtree: false,
+      synthetic: true
+    };
+    for (const node of nodes.values()) {
+      if (node.parentId === null) {
+        root.children.push(node);
+        continue;
+      }
+      const parent = nodes.get(node.parentId);
+      if (!parent) throw new Error(`Missing parent ${node.parentId} for task ${node.id}`);
+      parent.children.push(node);
+    }
+    for (const node of nodes.values()) node.children.sort(sortByOrder);
+    root.children.sort(sortByOrder);
+    if (tasks.length > 0 && root.children.length === 0) {
+      throw new Error("No reachable root tasks found");
+    }
+    return root;
+  }
+  function validateReachable(root, expectedTaskCount) {
+    const visiting = /* @__PURE__ */ new Set();
+    const visited = /* @__PURE__ */ new Set();
+    function walk(node) {
+      if (visiting.has(node.id)) throw new Error(`Cycle detected at task ${node.id}`);
+      if (visited.has(node.id)) return;
+      visiting.add(node.id);
+      for (const child of node.children) walk(child);
+      visiting.delete(node.id);
+      visited.add(node.id);
+    }
+    walk(root);
+    if (visited.size - 1 !== expectedTaskCount) {
+      throw new Error("Some tasks are not reachable from a root");
+    }
+  }
+  function markFocus(node) {
+    let childHasFocus = false;
+    for (const child of node.children) {
+      if (markFocus(child)) childHasFocus = true;
+    }
+    node.hasFocusInSubtree = normalizedStatus(node.task || {}) === "focus" || childHasFocus;
+    return node.hasFocusInSubtree;
+  }
+  function calculateFrontier(tasks = []) {
+    const root = buildTree(tasks);
+    validateReachable(root, tasks.length);
+    markFocus(root);
+    const frontier = [];
+    const focusHighlights = [];
+    function visit(node, paused) {
+      const status = normalizedStatus(node.task || {});
+      if (CLOSED_STATUSES.has(status) && !node.hasFocusInSubtree) return false;
+      if (status === "focus") focusHighlights.push(node.task);
+      const focusInsidePause = paused && status === "focus";
+      const insidePause = paused && status !== "focus" || status === "pause";
+      if (insidePause && !node.hasFocusInSubtree) return false;
+      if (!node.synthetic && focusInsidePause) {
+        frontier.push(node.task);
+      }
+      const activeChildren = node.children.filter((child) => !CLOSED_STATUSES.has(normalizedStatus(child.task)) || child.hasFocusInSubtree);
+      const focusedChildren = activeChildren.filter((child) => normalizedStatus(child.task) === "focus");
+      const childrenToVisit = focusedChildren.length ? focusedChildren : activeChildren;
+      let descendantInFrontier = false;
+      for (const child of childrenToVisit) {
+        if (visit(child, insidePause)) descendantInFrontier = true;
+      }
+      if (!node.synthetic && FRONTIER_STATUSES.has(status) && !descendantInFrontier && !focusInsidePause) {
+        frontier.push(node.task);
+        return true;
+      }
+      return focusInsidePause || descendantInFrontier;
+    }
+    visit(root, false);
+    return { frontier, focusHighlights };
+  }
+
   // src/list-renderer.js
   function escHtml(value) {
     return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -1006,6 +1175,8 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
     return "#007aff";
   }
   function createRenderer({ container, actionLogPanel, actionLogList, rootPanel, emptyStateLabel, bindRow, bindGlobal, onRendered } = {}) {
+    const expandedFrontierParents = /* @__PURE__ */ new Set();
+    let lastState = null;
     function renderActionLog(actionLog) {
       if (!actionLogList) return;
       actionLogList.innerHTML = "";
@@ -1022,13 +1193,135 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
         actionLogList.appendChild(row);
       }
     }
+    function renderRow({ actionBgClass = "del", fragment, hasChildren, hidden = false, index, item, level, onRowClick = null }) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "list-item-wrapper";
+      wrapper.dataset.id = item.id;
+      wrapper.dataset.actId = item.id;
+      wrapper.dataset.actType = "task";
+      wrapper.dataset.level = String(level);
+      wrapper.style.marginLeft = `${level * 24}px`;
+      if (hidden) wrapper.style.display = "none";
+      const actionBg = document.createElement("div");
+      actionBg.className = `action-bg ${actionBgClass}`;
+      actionBg.innerHTML = `<span class="action-icon">\u{1F5D1}</span><span class="action-label">\u0423\u0434\u0430\u043B\u0438\u0442\u044C</span>`;
+      const row = document.createElement("div");
+      row.className = "list-item";
+      row.dataset.actId = item.id;
+      row.dataset.actType = "task";
+      const chevron = hasChildren ? `<span class="chevron">${item.collapsed ? "\u25B6" : "\u25BC"}</span>` : "";
+      row.innerHTML = `
+      <div class="item-head">
+        <div class="item-copy">
+          <div class="item-line1">${chevron}${escHtml(item.line1)}</div>
+          ${item.line2 ? `<div class="item-line2">${escHtml(item.line2)}</div>` : ""}
+          ${item.tags?.length ? `<div class="item-tags">${item.tags.map((tag) => `<span class="item-tag">${escHtml(tag)}</span>`).join("")}</div>` : ""}
+        </div>
+        <div class="item-side">
+          <span class="status-badge" style="--badge-color:${statusColor(item.status)}">${escHtml(item.status)}</span>
+          <div class="item-index">${index}</div>
+        </div>
+      </div>
+    `;
+      wrapper.appendChild(actionBg);
+      wrapper.appendChild(row);
+      fragment.appendChild(wrapper);
+      if (typeof bindRow === "function") bindRow({ actionBg, item, level, row, wrapper });
+      if (typeof onRowClick === "function") row.addEventListener("click", onRowClick);
+    }
+    function renderFrontierParentRow({ fragment, parent }) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "list-item-wrapper frontier-parent-wrapper";
+      wrapper.dataset.id = `parent:${parent.id}`;
+      wrapper.dataset.actId = parent.id;
+      wrapper.dataset.actType = "task-parent-context";
+      wrapper.dataset.level = "0";
+      wrapper.style.marginLeft = "0px";
+      const row = document.createElement("div");
+      row.className = "list-item frontier-parent-item";
+      row.innerHTML = `
+      <div class="item-head">
+        <div class="item-copy">
+          <div class="item-line1">${escHtml(parent.line1)}</div>
+          ${parent.line2 ? `<div class="item-line2">${escHtml(parent.line2)}</div>` : ""}
+          ${parent.tags?.length ? `<div class="item-tags">${parent.tags.map((tag) => `<span class="item-tag">${escHtml(tag)}</span>`).join("")}</div>` : ""}
+        </div>
+        <div class="item-side">
+          <span class="status-badge" style="--badge-color:${statusColor(parent.status)}">${escHtml(parent.status)}</span>
+        </div>
+      </div>
+    `;
+      wrapper.appendChild(row);
+      fragment.appendChild(wrapper);
+    }
+    function renderFrontier(state) {
+      const items = state.snapshot.items || [];
+      const itemById = new Map(items.map((item) => [item.id, item]));
+      const childIds = new Set(items.map((item) => item.parentId).filter(Boolean));
+      let result;
+      try {
+        result = calculateFrontier(items);
+      } catch (error) {
+        container.innerHTML = `<div class="empty-state frontier-error"><div class="icon">\u26A0</div><p>${escHtml(error.message)}</p></div>`;
+        return;
+      }
+      if (!result.frontier.length) {
+        container.innerHTML = `<div class="empty-state"><div class="icon">\u25CE</div><p>\u0412\u043E \u0444\u0440\u043E\u043D\u0442\u0438\u0440\u0435 \u043D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447.</p></div>`;
+        return;
+      }
+      const focusIds = new Set(result.focusHighlights.map((item) => item.id));
+      const fragment = document.createDocumentFragment();
+      if (result.focusHighlights.length) {
+        const focusStrip = document.createElement("div");
+        focusStrip.className = "frontier-focus-strip";
+        focusStrip.innerHTML = `
+        <span class="frontier-focus-label">\u0424\u043E\u043A\u0443\u0441</span>
+        ${result.focusHighlights.map((item) => `<span class="frontier-focus-chip">${escHtml(item.line1 || item.id)}</span>`).join("")}
+      `;
+        fragment.appendChild(focusStrip);
+      }
+      result.frontier.forEach((item, position) => {
+        const parent = item.parentId ? itemById.get(item.parentId) : {
+          id: "__root__",
+          status: "Open",
+          line1: "\u041C\u043E\u0439 \u0441\u043F\u0438\u0441\u043E\u043A",
+          line2: "",
+          tags: []
+        };
+        const parentExpanded = expandedFrontierParents.has(item.id);
+        if (parentExpanded) {
+          renderFrontierParentRow({ fragment, parent });
+        }
+        renderRow({
+          actionBgClass: focusIds.has(item.id) ? "focus" : "del",
+          fragment,
+          hasChildren: childIds.has(item.id),
+          index: position + 1,
+          item,
+          level: parentExpanded ? 1 : 0,
+          onRowClick: parent ? () => {
+            if (expandedFrontierParents.has(item.id)) expandedFrontierParents.delete(item.id);
+            else expandedFrontierParents.add(item.id);
+            render(lastState || state, "frontier");
+          } : null
+        });
+      });
+      container.appendChild(fragment);
+    }
     function render(state, viewMode = "list") {
       if (!container) return;
+      lastState = state;
       if (rootPanel) rootPanel.dataset.viewMode = viewMode;
       if (actionLogPanel) actionLogPanel.hidden = viewMode !== "log";
       if (container) container.hidden = viewMode === "log";
       container.innerHTML = "";
       renderActionLog(state.actionLog || []);
+      if (viewMode === "frontier") {
+        renderFrontier(state);
+        if (typeof bindGlobal === "function") bindGlobal();
+        if (typeof onRendered === "function") onRendered(state, viewMode);
+        return;
+      }
       const items = state.snapshot.items || [];
       if (!items.length) {
         container.innerHTML = `<div class="empty-state"><div class="icon">\u{1F4CB}</div><p>${escHtml(emptyStateLabel || "\u0421\u043F\u0438\u0441\u043E\u043A \u043F\u0443\u0441\u0442. \u041D\u0430\u0436\u043C\u0438\u0442\u0435 + \u0447\u0442\u043E\u0431\u044B \u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C.")}</p></div>`;
@@ -1041,39 +1334,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
         for (const item of byParent.get(parentId) || []) {
           index += 1;
           const hasChildren = (byParent.get(item.id) || []).length > 0;
-          const wrapper = document.createElement("div");
-          wrapper.className = "list-item-wrapper";
-          wrapper.dataset.id = item.id;
-          wrapper.dataset.actId = item.id;
-          wrapper.dataset.actType = "task";
-          wrapper.dataset.level = String(level);
-          wrapper.style.marginLeft = `${level * 24}px`;
-          if (hidden) wrapper.style.display = "none";
-          const actionBg = document.createElement("div");
-          actionBg.className = "action-bg del";
-          actionBg.innerHTML = `<span class="action-icon">\u{1F5D1}</span><span class="action-label">\u0423\u0434\u0430\u043B\u0438\u0442\u044C</span>`;
-          const row = document.createElement("div");
-          row.className = "list-item";
-          row.dataset.actId = item.id;
-          row.dataset.actType = "task";
-          const chevron = hasChildren ? `<span class="chevron">${item.collapsed ? "\u25B6" : "\u25BC"}</span>` : "";
-          row.innerHTML = `
-          <div class="item-head">
-            <div class="item-copy">
-              <div class="item-line1">${chevron}${escHtml(item.line1)}</div>
-              ${item.line2 ? `<div class="item-line2">${escHtml(item.line2)}</div>` : ""}
-              ${item.tags?.length ? `<div class="item-tags">${item.tags.map((tag) => `<span class="item-tag">${escHtml(tag)}</span>`).join("")}</div>` : ""}
-            </div>
-            <div class="item-side">
-              <span class="status-badge" style="--badge-color:${statusColor(item.status)}">${escHtml(item.status)}</span>
-              <div class="item-index">${index}</div>
-            </div>
-          </div>
-        `;
-          wrapper.appendChild(actionBg);
-          wrapper.appendChild(row);
-          fragment.appendChild(wrapper);
-          if (typeof bindRow === "function") bindRow({ actionBg, item, level, row, wrapper });
+          renderRow({ fragment, hasChildren, hidden, index, item, level });
           walk(item.id, level + 1, hidden || !!item.collapsed);
         }
       }
@@ -1225,7 +1486,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
       return { id, parentId, order: currentOrder };
     });
   }
-  function createUI({ rootPanel, header, viewToggleButton, undoButton, addButton, container, toastEl, dropPanel, tagPanel, overlay, input1, input2, modalTitle, btnConfirm, btnCancel, viewContent, viewLine1, viewLine2, viewTagsEl, actionLogPanel, taskPage, taskPageClose, taskPageSave, taskPageTitle, taskPageLine1, taskPageLine2, taskPageStatus, taskPageSubtasks, taskPageChildInput, taskPageAddChild }) {
+  function createUI({ rootPanel, header, viewToggleButton, frontierButton, undoButton, addButton, container, toastEl, dropPanel, tagPanel, overlay, input1, input2, modalTitle, btnConfirm, btnCancel, viewContent, viewLine1, viewLine2, viewTagsEl, actionLogPanel, taskPage, taskPageClose, taskPageSave, taskPageTitle, taskPageLine1, taskPageLine2, taskPageStatus, taskPageSubtasks, taskPageChildInput, taskPageAddChild }) {
     let dispatchUserInput = () => {
     };
     let getState = () => ({ snapshot: { items: [] }, actionLog: [] });
@@ -1560,6 +1821,16 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
           command: wantsLog ? "showActionLog" : "showList",
           payload: {},
           source: "view-toggle"
+        });
+      });
+      frontierButton?.addEventListener("click", () => {
+        const wantsFrontier = rootPanel.dataset.viewMode !== "frontier";
+        dispatchUserInput({
+          actId: wantsFrontier ? "frontier" : "list",
+          actType: wantsFrontier ? "tab" : "list",
+          command: wantsFrontier ? "showFrontier" : "showList",
+          payload: {},
+          source: "frontier-tab"
         });
       });
       document.addEventListener("touchmove", (event) => {
@@ -1902,7 +2173,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
         } else if (wasLeft && dx < -30 && savedTagAction) {
           if (isMouse) mouseSwipeDone = true;
           execPanelAction(savedTagAction, itemId, "left-swipe-panel");
-        } else if (!isMouse && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+        } else if (!isMouse && Math.abs(dx) < 10 && Math.abs(dy) < 10 && rootPanel.dataset.viewMode !== "frontier") {
           dispatchUserInput({ actId: itemId, actType: "task", command: "toggleCollapse", payload: {}, source: "tap" });
         }
       };
@@ -1925,6 +2196,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
           hideTagPanel();
           row.style.transform = "";
           actionBg.style.opacity = "0";
+          if (rootPanel.dataset.viewMode === "frontier") return;
           startDrag(wrapper, curY, curX);
         }, 370);
       }, { passive: true });
@@ -1957,6 +2229,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
           hideTagPanel();
           row.style.transform = "";
           actionBg.style.opacity = "0";
+          if (rootPanel.dataset.viewMode === "frontier") return;
           startDrag(wrapper, curY, curX);
         }, 370);
       });
@@ -1967,6 +2240,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
           mouseSwipeDone = false;
           return;
         }
+        if (rootPanel.dataset.viewMode === "frontier") return;
         dispatchUserInput({ actId: itemId, actType: "task", command: "toggleCollapse", payload: {}, source: "click" });
       });
     }
@@ -1978,6 +2252,10 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
     function onRendered(state, viewMode) {
       rootPanel.dataset.viewMode = viewMode;
       viewToggleButton.textContent = viewMode === "log" ? "\u0421\u043F\u0438\u0441\u043E\u043A" : "\u0416\u0443\u0440\u043D\u0430\u043B";
+      if (frontierButton) {
+        frontierButton.textContent = viewMode === "frontier" ? "\u0421\u043F\u0438\u0441\u043E\u043A" : "\u0424\u0440\u043E\u043D\u0442\u0438\u0440";
+        frontierButton.classList.toggle("active", viewMode === "frontier");
+      }
     }
     return {
       bindGlobal,
@@ -2003,6 +2281,7 @@ window.__LIST_MANAGER_BUILD_HASH__ = "mrfy24y0-y3psju";
       rootPanel: document.getElementById("app-root"),
       header: document.querySelector("header"),
       viewToggleButton: document.getElementById("view-toggle-btn"),
+      frontierButton: document.getElementById("frontier-tab-btn"),
       undoButton: document.getElementById("undo-btn"),
       addButton: document.getElementById("add-btn"),
       container: document.getElementById("list-container"),

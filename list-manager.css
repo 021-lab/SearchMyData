@@ -43,7 +43,8 @@ header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
 #undo-btn:active { background: #e0e0e0; }
 #undo-btn:disabled { opacity: 0.3; pointer-events: none; }
 
-#view-toggle-btn {
+#view-toggle-btn,
+.header-tab-btn {
   flex-shrink: 0;
   min-width: 88px;
   height: 40px;
@@ -60,9 +61,63 @@ header h1 { flex: 1; font-size: 20px; font-weight: 700; color: #1a1a2e; }
   transition: background 0.15s, transform 0.1s, color 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
-#view-toggle-btn:active { transform: scale(0.96); background: #e0e0e0; }
+#view-toggle-btn:active,
+.header-tab-btn:active { transform: scale(0.96); background: #e0e0e0; }
+.header-tab-btn.active {
+  background: #1a1a2e;
+  color: #fff;
+}
 
 #list-container { padding: 12px 0 88px; position: relative; }
+
+.frontier-focus-strip {
+  margin: 0 12px 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff7e8;
+  border: 1px solid #ffd79a;
+  color: #8a4b00;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.frontier-focus-label {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.frontier-focus-chip {
+  background: #ff9500;
+  color: #fff;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.frontier-parent-wrapper {
+  margin-bottom: 0;
+}
+
+.frontier-parent-item {
+  background: #f8f9fb;
+  border-top: 1px solid #eceef3;
+  color: #6f7480;
+}
+
+.frontier-parent-item .item-line1 {
+  color: #6f7480;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.frontier-parent-item .item-line1::before {
+  content: "Родитель: ";
+  color: #a0a5ad;
+  font-weight: 800;
+}
 
 /* ── Swipe action bg ── */
 .list-item-wrapper {

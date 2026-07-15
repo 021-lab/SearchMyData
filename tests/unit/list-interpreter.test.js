@@ -18,4 +18,19 @@ describe('list interpreter', () => {
     expect(result.actionLogEntry.command.command).toBe('addItem');
     expect(result.actionLogEntry.command.payload.line1).toBe('Task from test');
   });
+
+  test('switches to frontier view without mutating state', () => {
+    const interpreter = createInterpreter();
+    const state = { snapshot: { items: [] }, actionLog: [] };
+
+    const result = interpreter.execute(state, {
+      actId: 'frontier',
+      actType: 'tab',
+      command: 'showFrontier',
+      payload: {},
+      source: 'unit-test'
+    });
+
+    expect(result).toEqual({ patch: [], actionLogEntry: null, viewMode: 'frontier' });
+  });
 });

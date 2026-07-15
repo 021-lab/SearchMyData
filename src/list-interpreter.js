@@ -70,8 +70,13 @@ export function createInterpreter() {
       let actionLogEntry = null;
       const payload = input.payload || {};
 
-      if (input.command === 'showActionLog' || input.command === 'showList') {
-        return { patch: [], actionLogEntry: null, viewMode: input.command === 'showActionLog' ? 'log' : 'list' };
+      if (input.command === 'showActionLog' || input.command === 'showList' || input.command === 'showFrontier') {
+        return {
+          patch: [],
+          actionLogEntry: null,
+          viewMode: input.command === 'showActionLog' ? 'log' :
+            input.command === 'showFrontier' ? 'frontier' : 'list'
+        };
       }
 
       if (input.command === 'showAddModal' || input.command === 'showEditModal' || input.command === 'showNestModal' || input.command === 'viewItem') {
