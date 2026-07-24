@@ -205,7 +205,7 @@ function resolve(text, rows) {
                sig: { m: Q.length, s: Q.length * W_EXACT, t: Q.length } })) };
 
   // подписи над найденным множеством
-  let cands = withNorm
+  const cands = withNorm
     .map((r) => ({ id: r.id, title: r.title, sig: signature(Q, tokenize(r.title_norm)) }))
     .filter((c) => c.sig.m > 0);           // паттерн зацепил, ярусы — нет
   if (cands.length === 0) return { kind: 'empty' };  // инвариант 3
@@ -234,8 +234,11 @@ function resolveOverTasks(text, tasks) {
   return resolve(text, findCandidates(text, tasks));
 }
 
-// экспорт: браузер и node
+export { normalize, tokenize, queryPatterns, buildQuery, findCandidates,
+         damerauLevenshtein, pairTier, signature, resolve, resolveOverTasks,
+         CAND_LIMIT, FOUND_CAP };
+
 const api = { normalize, tokenize, queryPatterns, buildQuery, findCandidates,
               damerauLevenshtein, pairTier, signature, resolve, resolveOverTasks };
-if (typeof module !== 'undefined') module.exports = api;
+export default api;
 if (typeof window !== 'undefined') window.resolver = api;
