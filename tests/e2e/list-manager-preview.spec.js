@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.route('https://firestore.googleapis.com/**', async (route) => {
+    await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+  });
+});
+
 async function confirmModal(page) {
   await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
   await page.locator('#input-line1').press('Enter');
