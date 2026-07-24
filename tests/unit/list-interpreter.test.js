@@ -33,4 +33,70 @@ describe('list interpreter', () => {
 
     expect(result).toEqual({ patch: [], actionLogEntry: null, viewMode: 'frontier' });
   });
+
+  test('moves an item to a new parent without creating a cycle', () => {
+    const interpreter = createInterpreter();
+    const state = {
+      snapshot: {
+        items: [
+          { id: 'a', parentId: null, order: 10, status: 'Open', line1: 'A' },
+          { id: 'b', parentId: 'a', order: 10, status: 'Open', line1: 'B' },
+          { id: 'c', parentId: null, order: 20, status: 'Open', line1: 'C' }
+        ]
+      },
+      actionLog: []
+    };
+
+    const moved = interpreter.execute(state, {
+      actId: 'b',
+      actType: 'task',
+      command: 'setParent',
+      payload: { parentId: 'c' },
+      source: 'unit-test'
+    });
+    expect(moved.patch[0].value.find((item) => item.id === 'b').parentId).toBe('c');
+    expect(moved.actionLogEntry.command.command).toBe('setParent');
+
+    const rejected = interpreter.execute(state, {
+      actId: 'a',
+      actType: 'task',
+      command: 'setParent',
+      payload: { parentId: 'b' },
+      source: 'unit-test'
+    });
+    expect(rejected).toEqual({ patch: [], actionLogEntry: null });
+  });
+
+  test('protects inbox and returns search view without action log entry', () => {
+    const interpreter = createInterpreter();
+    const state = {
+      snapshot: {
+        items: [
+          { id: 'inbox', parentId: null, order: 0, status: 'Open', line1: 'Входящие' },
+          { id: 'milk', parentId: 'inbox', order: 10, status: 'Open', line1: 'Купить молоко' },
+          { id: 'old', parentId: null, order: 20, status: 'Archive', line1: 'Старое молоко' }
+        ]
+      },
+      actionLog: []
+    };
+
+    expect(interpreter.execute(state, {
+      actId: 'inbox',
+      actType: 'task',
+      command: 'editItem',
+      payload: { line1: 'Other' },
+      source: 'unit-test'
+    })).toEqual({ patch: [], actionLogEntry: null });
+
+    const search = interpreter.execute(state, {
+      actId: null,
+      actType: 'list',
+      command: 'showSearch',
+      payload: { query: 'молоко' },
+      source: 'unit-test'
+    });
+    expect(search.viewMode).toBe('search');
+    expect(search.effect.itemIds).toEqual(['milk']);
+    expect(search.actionLogEntry).toBeNull();
+  });
 });

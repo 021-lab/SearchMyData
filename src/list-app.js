@@ -1,9 +1,10 @@
 export function createApp({ adapter, interpreter, renderer, store, sync, ui }) {
   let state = null;
   let viewMode = 'list';
+  let viewContext = {};
 
   function render() {
-    renderer.render(state, viewMode);
+    renderer.render(state, viewMode, viewContext);
   }
 
   function handleEffect(effect) {
@@ -16,6 +17,7 @@ export function createApp({ adapter, interpreter, renderer, store, sync, ui }) {
 
     if (result.viewMode) {
       viewMode = result.viewMode;
+      viewContext = result.effect || {};
       render();
       return;
     }

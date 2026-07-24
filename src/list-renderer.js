@@ -189,7 +189,37 @@ const focusIds = new Set(result.focusHighlights.map((item) => item.id));
     container.appendChild(fragment);
   }
 
-  function render(state, viewMode = 'list') {
+  function renderSearch(state, context = {}) {
+    const ids = new Set(context.itemIds || []);
+    const items = (state.snapshot.items || [])
+      .filter((item) => ids.has(item.id) && !isArchived(item))
+      .sort((left, right) => left.order - right.order);
+
+    const summary = document.createElement('div');
+    summary.className = 'search-summary';
+    summary.textContent = `Поиск: ${context.query || ''}`;
+    container.appendChild(summary);
+
+    if (!items.length) {
+      container.insertAdjacentHTML('beforeend', '<div class="empty-state"><div class="icon">⌕</div><p>Ничего не найдено.</p></div>');
+      return;
+    }
+
+    const childIds = new Set((state.snapshot.items || []).map((item) => item.parentId).filter(Boolean));
+    const fragment = document.createDocumentFragment();
+    items.forEach((item, index) => {
+      renderRow({
+        fragment,
+        hasChildren: childIds.has(item.id),
+        index: index + 1,
+        item,
+        level: 0
+      });
+    });
+    container.appendChild(fragment);
+  }
+
+  function render(state, viewMode = 'list', viewContext = {}) {
     if (!container) return;
     lastState = state;
 
@@ -204,6 +234,13 @@ const focusIds = new Set(result.focusHighlights.map((item) => item.id));
       renderFrontier(state);
       if (typeof bindGlobal === 'function') bindGlobal();
       if (typeof onRendered === 'function') onRendered(state, viewMode);
+      return;
+    }
+
+    if (viewMode === 'search') {
+      renderSearch(state, viewContext);
+      if (typeof bindGlobal === 'function') bindGlobal();
+      if (typeof onRendered === 'function') onRendered(state, viewMode, viewContext);
       return;
     }
 

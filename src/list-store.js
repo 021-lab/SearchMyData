@@ -2,6 +2,26 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+const INBOX_ITEM = {
+  id: 'inbox',
+  parentId: null,
+  order: 0,
+  status: 'Open',
+  line1: 'Входящие',
+  line2: '',
+  collapsed: false,
+  tags: []
+};
+
+function ensureInbox(nextState) {
+  const state = clone(nextState);
+  const items = state.snapshot?.items || [];
+  if (!items.some((item) => item.id === INBOX_ITEM.id)) {
+    state.snapshot.items = [clone(INBOX_ITEM), ...items];
+  }
+  return state;
+}
+
 function decodePathSegment(segment) {
   return segment.replace(/~1/g, '/').replace(/~0/g, '~');
 }
@@ -40,8 +60,8 @@ export function createStore({ storageKey = 'searchmydata.list.state', storage = 
 
   function load() {
     const raw = storage.getItem(storageKey);
-    state = raw ? JSON.parse(raw) : clone(seedState);
-    if (!raw) persist();
+    state = ensureInbox(raw ? JSON.parse(raw) : seedState);
+    persist();
     return clone(state);
   }
 
@@ -51,7 +71,7 @@ export function createStore({ storageKey = 'searchmydata.list.state', storage = 
   }
 
   function replaceState(nextState) {
-    state = clone(nextState);
+    state = ensureInbox(nextState);
     persist();
     return getState();
   }

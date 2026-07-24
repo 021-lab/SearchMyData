@@ -1,4 +1,8 @@
+import { findCandidates } from './resolver.js';
+import { adaptSnapshot } from './snapshot-adapter.js';
+
 const STATUS_VALUES = new Set(['Open', 'Done', 'Focus', 'Archive', 'Pause']);
+const INBOX_ID = 'inbox';
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -17,6 +21,10 @@ function nextOrder(items, parentId) {
   const siblings = items.filter((item) => item.parentId === parentId);
   if (!siblings.length) return 10;
   return Math.max(...siblings.map((item) => item.order || 0)) + 10;
+}
+
+function noChange() {
+  return { patch: [], actionLogEntry: null };
 }
 
 function buildLabel(command, payload = {}) {
@@ -79,6 +87,21 @@ export function createInterpreter() {
         };
       }
 
+      if (input.command === 'showSearch') {
+        const query = String(payload.query || '').trim();
+        const rows = findCandidates(query, adaptSnapshot(currentItems));
+        return {
+          patch: [],
+          actionLogEntry: null,
+          viewMode: 'search',
+          effect: {
+            type: 'search',
+            query,
+            itemIds: rows.map((row) => row.id)
+          }
+        };
+      }
+
       if (input.command === 'showAddModal' || input.command === 'showEditModal' || input.command === 'showNestModal' || input.command === 'viewItem') {
         return {
           patch: [],
@@ -91,6 +114,11 @@ export function createInterpreter() {
             itemId: input.actId === 'list' ? null : input.actId
           }
         };
+      }
+
+      if ((input.command === 'editItem' || input.command === 'deleteItem' || input.command === 'setParent') &&
+          input.actId === INBOX_ID) {
+        return noChange();
       }
 
       if (input.command === 'addItem') {
@@ -124,6 +152,14 @@ export function createInterpreter() {
       } else if (input.command === 'setStatus') {
         const item = nextItems.find((candidate) => candidate.id === input.actId);
         if (item && STATUS_VALUES.has(payload.status)) item.status = payload.status;
+      } else if (input.command === 'setParent') {
+        const item = nextItems.find((candidate) => candidate.id === input.actId);
+        const parentId = payload.parentId ?? null;
+        if (!item || parentId === input.actId) return noChange();
+        if (parentId !== null && !nextItems.some((candidate) => candidate.id === parentId)) return noChange();
+        if (parentId !== null && descendants(nextItems, input.actId).has(parentId)) return noChange();
+        item.parentId = parentId;
+        item.order = nextOrder(nextItems.filter((candidate) => candidate.id !== input.actId), parentId);
       } else if (input.command === 'setTags') {
         const item = nextItems.find((candidate) => candidate.id === input.actId);
         if (item) {

@@ -62,10 +62,11 @@ function labelOf(tasks, id) {
 }
 
 class VoiceSession {
-  constructor({ tasks, asr, constants = G.C }) {
+  constructor({ tasks, asr, constants = G.C, onUpdate = null }) {
     this.tasks = tasks;
     this.asr = asr;
     this.c = constants;
+    this.onUpdate = onUpdate;
     this.messages = [];
     this.log = [];
     this.overlay = { finger: { kind: 'fallback' }, stack: [] };
@@ -78,7 +79,13 @@ class VoiceSession {
     this.frozenStack = null;
   }
 
-  message(code) { this.messages.push(MESSAGES[code] ?? code); this.log.push({ event: code }); }
+  emitUpdate() { this.onUpdate?.(this); }
+
+  message(code) {
+    this.messages.push(MESSAGES[code] ?? code);
+    this.log.push({ event: code });
+    this.emitUpdate();
+  }
 
   arm(context) {
     const ok = this.asr.start({
@@ -91,6 +98,7 @@ class VoiceSession {
     this.context = context;
     this.log.push({ event: 'overlay-shown', constants: this.c, theta: CR.THETA });
     if (!this.asr.hasInterim()) this.message('degraded');
+    this.emitUpdate();
     return true;
   }
 
@@ -108,17 +116,26 @@ class VoiceSession {
     if (this.frozenStack) next.stack = this.frozenStack;   // порядок заморожен
     this.overlay = next;
     this.recomputes++;
+    this.emitUpdate();
   }
 
   move(dy) {
     this.dy = dy;
     if (dy >= this.c.FREEZE_DY_PX && !this.frozenStack) this.frozenStack = this.overlay.stack;
+    this.emitUpdate();
   }
 
   // Отпускание: сначала финал, потом решение.
   release(dy) {
     this.dy = dy;
-    this.asr.stop();
+    const stopped = this.asr.stop();
+    if (stopped && typeof stopped.then === 'function') {
+      return stopped.then(() => this.resolveRelease(dy));
+    }
+    return this.resolveRelease(dy);
+  }
+
+  resolveRelease(dy) {
     if (this.error) return { action: 'cancel', why: this.error };
 
     if (this.finalText !== null && this.finalText !== this.text) {

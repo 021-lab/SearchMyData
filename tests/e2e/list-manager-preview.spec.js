@@ -52,7 +52,7 @@ test('preview app can create task, create subtask, and change status', async ({ 
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
   await expect(page.locator('#list-container')).toBeVisible();
-  await expect(page.locator('.list-item-wrapper').first()).toContainText('Молоко 3.2%');
+  await expect(page.locator('#list-container')).toContainText('Молоко 3.2%');
 
   await page.getByRole('button', { name: 'Добавить задачу' }).click();
   await page.locator('#input-line1').fill(taskTitle);
@@ -100,4 +100,43 @@ test('preview app can create task, create subtask, and change status', async ({ 
   await expect(taskRow).toContainText('Done');
   await page.locator('#view-toggle-btn').click();
   await expect(page.locator('#action-log-list')).toContainText('Статус изменён: Done');
+});
+
+test('preview app executes voice commands through touch gestures', async ({ page }) => {
+  const voiceTitle = `Голосовая задача ${Date.now()}`;
+  const normalizedVoiceTitle = voiceTitle.toLowerCase();
+  await page.addInitScript((title) => {
+    window.__voiceTest = { phrase: `добавь ${title}` };
+  }, voiceTitle);
+
+  await page.goto('');
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  await expect(page.locator('#list-container')).toBeVisible();
+  await expect(page.locator('.list-item-wrapper', { hasText: 'Входящие' })).toBeVisible();
+
+  await page.mouse.move(220, 620);
+  await page.mouse.down();
+  await page.waitForTimeout(520);
+  await expect(page.locator('#voice-overlay')).toHaveClass(/open/);
+  await page.mouse.up();
+
+  const voiceRow = page.locator('.list-item-wrapper', { hasText: normalizedVoiceTitle });
+  await expect(voiceRow).toContainText(normalizedVoiceTitle);
+  expect(Number(await voiceRow.getAttribute('data-level'))).toBeGreaterThan(0);
+
+  await page.evaluate(() => { window.__voiceTest = { phrase: 'готово' }; });
+  const milkRow = page.locator('.list-item-wrapper', { hasText: 'Молоко 3.2%' }).locator('.list-item');
+  const box = await milkRow.boundingBox();
+  if (!box) throw new Error('No milk row box');
+  const viewport = page.viewportSize();
+  const leftSwipeDistance = Math.max(320, Math.floor((viewport?.width || 1280) * 0.28));
+
+  await page.mouse.move(box.x + box.width - 24, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - leftSwipeDistance, box.y + box.height / 2, { steps: 8 });
+  await expect(page.locator('#voice-overlay')).toHaveClass(/open/);
+  await page.mouse.up();
+
+  await expect(page.locator('.list-item-wrapper', { hasText: 'Молоко 3.2%' })).toContainText('Done');
 });

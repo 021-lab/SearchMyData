@@ -30,6 +30,7 @@ async function bootstrapListManagerPreview() {
     toastEl: document.getElementById('toast'),
     dropPanel: document.getElementById('drop-zone-panel'),
     tagPanel: document.getElementById('tag-panel'),
+    voiceOverlay: document.getElementById('voice-overlay'),
     overlay: document.getElementById('modal-overlay'),
     input1: document.getElementById('input-line1'),
     input2: document.getElementById('input-line2'),

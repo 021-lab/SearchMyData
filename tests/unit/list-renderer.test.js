@@ -213,4 +213,39 @@ describe('list renderer', () => {
     expect(document.body.textContent).not.toContain('Archived task');
     expect(document.body.textContent).not.toContain('Archived focus');
   });
+
+  test('renders search results from provided item ids', () => {
+    document.body.innerHTML = `
+      <div id="root"></div>
+      <div id="list-container"></div>
+      <div id="action-log-panel"></div>
+    `;
+
+    const boundIds = [];
+    const renderer = createRenderer({
+      rootPanel: document.getElementById('root'),
+      container: document.getElementById('list-container'),
+      actionLogPanel: document.getElementById('action-log-panel'),
+      bindRow({ item }) {
+        boundIds.push(item.id);
+      }
+    });
+
+    renderer.render({
+      snapshot: {
+        items: [
+          { id: 'match', parentId: null, order: 10, status: 'Open', line1: 'Купить молоко', line2: '', tags: [], collapsed: false },
+          { id: 'other', parentId: null, order: 20, status: 'Open', line1: 'Купить хлеб', line2: '', tags: [], collapsed: false },
+          { id: 'archived', parentId: null, order: 30, status: 'Archive', line1: 'Старое молоко', line2: '', tags: [], collapsed: false }
+        ]
+      },
+      actionLog: []
+    }, 'search', { query: 'молоко', itemIds: ['match', 'archived'] });
+
+    expect(document.body.textContent).toContain('Поиск: молоко');
+    expect(document.body.textContent).toContain('Купить молоко');
+    expect(document.body.textContent).not.toContain('Купить хлеб');
+    expect(document.body.textContent).not.toContain('Старое молоко');
+    expect(boundIds).toEqual(['match']);
+  });
 });

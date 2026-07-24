@@ -1,6 +1,12 @@
+import { BrowserASR } from './asr-browser.js';
+import { MockASR } from './asr-mock.js';
+import { C as VOICE_C } from './gesture.js';
+import { VoiceSession, validate as validateVoiceCommand } from './voice-session.js';
+
 const AVAILABLE_TAGS = ['Важное', 'Срочно', 'Купить', 'Дом', 'Работа', 'Отложить'];
 const STATUS_ACTIONS = new Set(['Open', 'Done', 'Focus', 'Archive', 'Pause']);
 const PANEL_ITEM_HEIGHT = 72;
+const VOICE_LONGPRESS_MS = 400;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -37,7 +43,7 @@ function deriveArrangedFromWrappers(wrappers) {
   });
 }
 
-export function createUI({ rootPanel, header, viewToggleButton, frontierButton, undoButton, addButton, container, toastEl, dropPanel, tagPanel, overlay, input1, input2, modalTitle, btnConfirm, btnCancel, viewContent, viewLine1, viewLine2, viewTagsEl, actionLogPanel, taskPage, taskPageClose, taskPageSave, taskPageTitle, taskPageLine1, taskPageLine2, taskPageStatus, taskPageSubtasks, taskPageChildInput, taskPageAddChild }) {
+export function createUI({ rootPanel, header, viewToggleButton, frontierButton, undoButton, addButton, container, toastEl, dropPanel, tagPanel, voiceOverlay, overlay, input1, input2, modalTitle, btnConfirm, btnCancel, viewContent, viewLine1, viewLine2, viewTagsEl, actionLogPanel, taskPage, taskPageClose, taskPageSave, taskPageTitle, taskPageLine1, taskPageLine2, taskPageStatus, taskPageSubtasks, taskPageChildInput, taskPageAddChild }) {
   let dispatchUserInput = () => {};
   let getState = () => ({ snapshot: { items: [] }, actionLog: [] });
   let boundGlobals = false;
@@ -54,6 +60,9 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
   let tagAction = null;
   let taskPageOpen = false;
   let taskPageTargetId = null;
+  let voiceState = null;
+  let voicePressTimer = null;
+  let voicePress = null;
 
   function showToast(message) {
     if (!toastEl) return;
@@ -61,6 +70,134 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
     toastEl.classList.add('show');
     clearTimeout(showToast.timer);
     showToast.timer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+  }
+
+  function itemLabel(id) {
+    return findItem(getState(), id)?.line1 || '';
+  }
+
+  function createVoiceAsr() {
+    const testConfig = window.__voiceTest;
+    if (testConfig) return new MockASR(testConfig);
+    return new BrowserASR({ finalTimeoutMs: VOICE_C.FINAL_TIMEOUT_MS });
+  }
+
+  function renderVoiceOverlay(session = voiceState?.session) {
+    if (!voiceOverlay || !session) return;
+    const selected = session.overlay.finger;
+    const rows = [];
+    if (selected?.kind === 'command') rows.push({ label: labelVoiceCommand(selected.command), selected: true });
+    else if (selected?.kind === 'blocked') rows.push({ label: 'Не найдено', selected: true });
+    else rows.push({ label: session.text || 'Слушаю...', selected: true });
+
+    for (const candidate of session.overlay.stack) rows.push({ label: candidate.label, selected: false });
+
+    voiceOverlay.innerHTML = `
+      <div class="voice-transcript">${escHtml(session.text || 'Слушаю...')}</div>
+      ${session.context ? `<div class="voice-context">${escHtml(itemLabel(session.context))}</div>` : ''}
+      <div class="voice-candidates">
+        ${rows.map((row) => `<div class="voice-candidate${row.selected ? ' selected' : ''}">${escHtml(row.label)}</div>`).join('')}
+      </div>
+      <div class="voice-cancel">Отмена</div>
+    `;
+    voiceOverlay.classList.add('open');
+  }
+
+  function labelVoiceCommand(command) {
+    if (!command) return '';
+    if (command.command === 'addChild') return `Добавить: ${command.payload.line1}`;
+    if (command.command === 'setStatus') return `Статус: ${command.payload.status}`;
+    if (command.command === 'setParent') return 'Перенести';
+    if (command.command === 'editItem') return `Переименовать: ${command.payload.line1}`;
+    if (command.command === 'showSearch') return `Поиск: ${command.payload.query}`;
+    if (command.command === 'undo') return 'Отменить';
+    return command.command;
+  }
+
+  function startVoice(contextId, anchorY) {
+    if (voiceState || modalOpen || taskPageOpen) return false;
+    hideDrop();
+    hideTagPanel();
+    const asr = createVoiceAsr();
+    const session = new VoiceSession({
+      tasks: getState().snapshot.items,
+      asr,
+      onUpdate: renderVoiceOverlay
+    });
+    voiceState = { session, anchorY, dy: 0 };
+    const armed = session.arm(contextId);
+    if (!armed) {
+      const message = session.messages.at(-1) || 'Нет доступа к микрофону';
+      showToast(message);
+      voiceState = null;
+      return false;
+    }
+    renderVoiceOverlay(session);
+    asr.speak?.();
+    renderVoiceOverlay(session);
+    return true;
+  }
+
+  function resetRowGesture(row, actionBg) {
+    row.classList.remove('pressing');
+    row.style.transition = 'transform 0.3s cubic-bezier(.4,0,.2,1)';
+    row.style.transform = '';
+    actionBg.style.opacity = '0';
+    hideDrop();
+    hideTagPanel();
+  }
+
+  function updateVoice(clientY) {
+    if (!voiceState) return;
+    voiceState.dy = voiceState.anchorY - clientY;
+    voiceState.session.move(voiceState.dy);
+    renderVoiceOverlay();
+  }
+
+  async function finishVoice() {
+    if (!voiceState) return;
+    const current = voiceState;
+    voiceState = null;
+    voiceOverlay?.classList.remove('open');
+    const result = await current.session.release(current.dy || 0);
+    handleVoiceResult(result);
+  }
+
+  function cancelVoice() {
+    if (!voiceState) return;
+    voiceState.session.asr.stop();
+    voiceState = null;
+    voiceOverlay?.classList.remove('open');
+  }
+
+  function handleVoiceResult(result) {
+    if (!result || result.action === 'cancel') {
+      if (result?.why) showToast(result.why);
+      return;
+    }
+    if (result.action === 'fallback') {
+      showToast(result.text ? `Не понял: ${result.text}` : 'Не расслышал');
+      return;
+    }
+    const command = result.command;
+    if (!command) return;
+    const state = getState();
+    if (!validateVoiceCommand(command, state.snapshot.items)) {
+      showToast('Задача изменилась, повторите');
+      return;
+    }
+    if (command.command === 'undo') {
+      if (!undoSnapshot) {
+        showToast('Нечего отменять');
+        return;
+      }
+      dispatchUserInput({ ...command, payload: { snapshot: clone(undoSnapshot) }, source: 'voice' });
+      undoSnapshot = null;
+      undoButton.disabled = true;
+      return;
+    }
+    if (!String(command.command).startsWith('show') && command.command !== 'viewItem') saveUndoSnapshot();
+    dispatchUserInput({ ...command, actType: command.actId ? 'task' : 'list', source: 'voice' });
   }
 
   function setDispatch(nextDispatch) {
@@ -409,7 +546,7 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
     });
 
     viewToggleButton.addEventListener('click', () => {
-      const wantsLog = rootPanel.dataset.viewMode !== 'log';
+      const wantsLog = rootPanel.dataset.viewMode !== 'log' && rootPanel.dataset.viewMode !== 'search';
       dispatchUserInput({
         actId: wantsLog ? 'actionLog' : 'list',
         actType: wantsLog ? 'panel' : 'list',
@@ -420,7 +557,7 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
     });
 
     frontierButton?.addEventListener('click', () => {
-      const wantsFrontier = rootPanel.dataset.viewMode !== 'frontier';
+      const wantsFrontier = rootPanel.dataset.viewMode !== 'frontier' && rootPanel.dataset.viewMode !== 'search';
       dispatchUserInput({
         actId: wantsFrontier ? 'frontier' : 'list',
         actType: wantsFrontier ? 'tab' : 'list',
@@ -430,21 +567,76 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
       });
     });
 
+    container.addEventListener('mousedown', (event) => {
+      if (event.button !== 0 || event.target.closest('.list-item,button,input,select,textarea')) return;
+      voicePress = { x: event.clientX, y: event.clientY };
+      voicePressTimer = setTimeout(() => {
+        voicePressTimer = null;
+        startVoice(null, voicePress.y);
+      }, VOICE_LONGPRESS_MS);
+    });
+
+    container.addEventListener('touchstart', (event) => {
+      if (event.target.closest('.list-item,button,input,select,textarea')) return;
+      const touch = event.touches[0];
+      voicePress = { x: touch.clientX, y: touch.clientY };
+      voicePressTimer = setTimeout(() => {
+        voicePressTimer = null;
+        startVoice(null, voicePress.y);
+      }, VOICE_LONGPRESS_MS);
+    }, { passive: true });
+
     document.addEventListener('touchmove', (event) => {
+      if (voicePressTimer) {
+        const touch = event.touches[0];
+        if (Math.abs(touch.clientX - voicePress.x) > 10 || Math.abs(touch.clientY - voicePress.y) > 10) {
+          clearTimeout(voicePressTimer);
+          voicePressTimer = null;
+        }
+      }
+      if (voiceState) {
+        event.preventDefault();
+        updateVoice(event.touches[0].clientY);
+        return;
+      }
       if (!dragState) return;
       event.preventDefault();
       updateDrag(event.touches[0].clientY, event.touches[0].clientX);
     }, { passive: false });
 
     document.addEventListener('touchend', () => {
+      if (voicePressTimer) {
+        clearTimeout(voicePressTimer);
+        voicePressTimer = null;
+      }
+      if (voiceState) {
+        finishVoice();
+        return;
+      }
       if (dragState) finalizeDrag();
     }, { passive: true });
 
     document.addEventListener('touchcancel', () => {
+      if (voicePressTimer) {
+        clearTimeout(voicePressTimer);
+        voicePressTimer = null;
+      }
+      if (voiceState) {
+        cancelVoice();
+        return;
+      }
       if (dragState) finalizeDrag();
     }, { passive: true });
 
     document.addEventListener('mousemove', (event) => {
+      if (voicePressTimer && (Math.abs(event.clientX - voicePress.x) > 10 || Math.abs(event.clientY - voicePress.y) > 10)) {
+        clearTimeout(voicePressTimer);
+        voicePressTimer = null;
+      }
+      if (voiceState) {
+        updateVoice(event.clientY);
+        return;
+      }
       if (dragState) {
         updateDrag(event.clientY, event.clientX);
         return;
@@ -453,6 +645,14 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
     });
 
     document.addEventListener('mouseup', () => {
+      if (voicePressTimer) {
+        clearTimeout(voicePressTimer);
+        voicePressTimer = null;
+      }
+      if (voiceState) {
+        finishVoice();
+        return;
+      }
       if (dragState) {
         finalizeDrag();
         wasDragging = true;
@@ -762,19 +962,12 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
       }
 
       if (ldAnchor !== null || dx < -threshold) {
-        if (ldAnchor !== null && dx > -threshold) {
-          hideTagPanel();
-          ldAnchor = null;
-          row.style.transform = `translate(0px, ${offsetY}px)`;
-          return;
+        ldAnchor = row.getBoundingClientRect().top + row.offsetHeight / 2;
+        active = false;
+        if (startVoice(itemId, curY)) {
+          if (isFinite(curY)) updateVoice(curY);
         }
-        if (!ldAnchor) {
-          ldAnchor = row.getBoundingClientRect().top + row.offsetHeight / 2;
-          showTagPanel(ldAnchor, itemId);
-        }
-        row.style.transform = `translate(${Math.max(dx, -110)}px, ${offsetY}px)`;
-        actionBg.style.opacity = '0';
-        tagAction = setActiveItem(tagPanel, offsetY);
+        resetRowGesture(row, actionBg);
         return;
       }
 
@@ -791,7 +984,6 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
       const action = dropAction;
       const wasRight = !!rdAnchor;
       const wasLeft = !!ldAnchor;
-      const savedTagAction = tagAction;
       rdAnchor = null;
       ldAnchor = null;
       hideDrop();
@@ -810,9 +1002,8 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
       if (wasRight && dx > 30 && action) {
         if (isMouse) mouseSwipeDone = true;
         execPanelAction(action, itemId, 'right-swipe-panel');
-      } else if (wasLeft && dx < -30 && savedTagAction) {
+      } else if (wasLeft && dx < -30) {
         if (isMouse) mouseSwipeDone = true;
-        execPanelAction(savedTagAction, itemId, 'left-swipe-panel');
       } else if (!isMouse && Math.abs(dx) < 10 && Math.abs(dy) < 10 && rootPanel.dataset.viewMode !== 'frontier') {
         dispatchUserInput({ actId: itemId, actType: 'task', command: 'toggleCollapse', payload: {}, source: 'tap' });
       }
@@ -833,13 +1024,9 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
         longTimer = null;
         active = false;
         rdAnchor = null;
-        hideDrop();
-        hideTagPanel();
-        row.style.transform = '';
-        actionBg.style.opacity = '0';
-        if (rootPanel.dataset.viewMode === 'frontier') return;
-        startDrag(wrapper, curY, curX);
-      }, 370);
+        if (rootPanel.dataset.viewMode !== 'frontier') startVoice(null, curY);
+        resetRowGesture(row, actionBg);
+      }, VOICE_LONGPRESS_MS);
     }, { passive: true });
 
     row.addEventListener('touchmove', (event) => {
@@ -869,13 +1056,9 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
         longTimer = null;
         active = false;
         rdAnchor = null;
-        hideDrop();
-        hideTagPanel();
-        row.style.transform = '';
-        actionBg.style.opacity = '0';
-        if (rootPanel.dataset.viewMode === 'frontier') return;
-        startDrag(wrapper, curY, curX);
-      }, 370);
+        if (rootPanel.dataset.viewMode !== 'frontier') startVoice(null, curY);
+        resetRowGesture(row, actionBg);
+      }, VOICE_LONGPRESS_MS);
     });
 
     row.addEventListener('click', () => {
@@ -898,9 +1081,9 @@ export function createUI({ rootPanel, header, viewToggleButton, frontierButton, 
 
   function onRendered(state, viewMode) {
     rootPanel.dataset.viewMode = viewMode;
-    viewToggleButton.textContent = viewMode === 'log' ? 'Список' : 'Журнал';
+    viewToggleButton.textContent = viewMode === 'log' || viewMode === 'search' ? 'Список' : 'Журнал';
     if (frontierButton) {
-      frontierButton.textContent = viewMode === 'frontier' ? 'Список' : 'Фронтир';
+      frontierButton.textContent = viewMode === 'frontier' || viewMode === 'search' ? 'Список' : 'Фронтир';
       frontierButton.classList.toggle('active', viewMode === 'frontier');
     }
   }

@@ -31,6 +31,12 @@ jobs:
           git diff --exit-code -- list-manager.html
           echo "Preview hash: $HASH"
 
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run voice tests
+        run: npm run test:voice
+
       - name: Verify cloudflared deployment
         run: |
           HEALTH_CODE=$(curl -L -s -o /tmp/cloudflared-health.out -w '%{http_code}' "$CLOUDFLARED_URL/health")
