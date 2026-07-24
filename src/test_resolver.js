@@ -1,4 +1,4 @@
-const R = require('./resolver.js');
+import * as R from './resolver.js';
 const T = (id, title, status='open') => ({id, title, status});
 const graph = [
   T('1','Ремонт'), T('2','Ванная','in_progress'), T('3','Установить смеситель'),

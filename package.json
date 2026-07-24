@@ -5,6 +5,8 @@
   "scripts": {
     "test": "npm run test:unit",
     "test:unit": "vitest run",
+    "test:voice": "node src/test_resolver.js && node src/test_e2e.js",
+    "test:gestures": "playwright test tests/e2e/gestures.spec.js",
     "test:e2e": "playwright test",
     "prepare-preview": "node scripts/prepare-preview.mjs",
     "serve:test": "node scripts/static-server.mjs"
